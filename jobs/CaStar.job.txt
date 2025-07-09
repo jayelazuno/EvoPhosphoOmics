@@ -1,0 +1,45 @@
+
+#!/bin/bash
+
+#$ -t 1-26                        # Adjust based on number of samples
+#$ -N star1.arr
+#$ -o $JOB_NAME.$TASK_ID.log
+#$ -j y
+#$ -cwd
+#$ -q UI,COE,BME-5335
+#$ -pe smp 56
+#$ -ckpt user
+#$ -S /bin/bash
+#$ -M jayelazuno@uiowa.edu
+#$ -m bea
+
+# Load STAR and samtools
+module load samtools
+
+# Define variables
+STAR=~/workspace/rnaseq/tools/STAR_2.7.11b/Linux_x86_64_static/STAR
+GENOMEDIR=~/workspace/EvoPhosphoOmics/refs/c_albicans
+OUTDIR=~/workspace/EvoPhosphoOmics/alignments/star/first/Ca
+DATADIR=~/workspace/rnaseq/data/Pi/Ca
+
+
+# Run STAR first pass
+$STAR \
+  --runThreadN 56 \
+  --genomeDir $GENOMEDIR \
+  --readFilesCommand gunzip -c \
+  --outSAMtype BAM Unsorted \
+  --quantMode TranscriptomeSAM \
+  --outFileNamePrefix $OUTDIR/Ca.$SGE_TASK_ID. \
+  --readFilesIn \
+  $DATADIR/Ca_1.$SGE_TASK_ID.fastq.gz \
+  $DATADIR/Ca_2.$SGE_TASK_ID.fastq.gz
+
+# Sort BAM file
+samtools sort --threads 56 \
+  $OUTDIR/Ca.$SGE_TASK_ID.Aligned.out.bam \
+  -o $OUTDIR/Ca.$SGE_TASK_ID.Aligned.sortedByCoord.out.bam
+
+# Index BAM file
+samtools index $OUTDIR/Ca.$SGE_TASK_ID.Aligned.sortedByCoord.out.bam
+

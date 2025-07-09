@@ -47,3 +47,44 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Ignore all BAM, BAI, SAM files (alignment output)
+alignments/**/*.bam
+alignments/**/*.bai
+alignments/**/*.sam
+
+# Ignore STAR log and temp files
+alignments/**/Log.*
+alignments/**/_STARtmp/
+alignments/**/*.tab
+
+# Ignore Salmon quantification outputs except quant.sf
+alignments/**/salmon_quant/
+alignments/**/libParams
+alignments/**/cmd_info.json
+alignments/**/logs/
+alignments/**/aux_info/
+# Keep quant.sf
+!alignments/**/quant.sf
+
+# Ignore Salmon indices
+refs/**/*_salmon_index/
+
+# Ignore transcriptome FASTA files (optional)
+refs/**/*.fa
+refs/**/*.fasta
+
+# Ignore index-related binaries and metadata
+refs/**/*.bin
+refs/**/*.json
+refs/**/*.tsv
+
+# Ignore alignment job logs
+jobs/*.log
+
+# Ignore all FastQC zip and html files (if present)
+alignments/**/*.zip
+alignments/**/*.html
+
+
+

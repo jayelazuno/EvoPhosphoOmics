@@ -1,0 +1,63 @@
+
+#!/bin/bash
+#$ -t 1-26
+#$ -N CaSalmonQuant
+#$ -o $JOB_NAME.$TASK_ID.log
+#$ -j y
+#$ -S /bin/bash
+#$ -cwd
+#$ -M jayelazuno@uiowa.edu
+#$ -pe smp 10
+#$ -q UI,COE,BME-5335
+
+date
+start=`date +%s`
+CMD="
+# Set Salmon binary
+SALMON="$HOME/workspace/rnaseq/tools/salmon-latest_linux_x86_64/bin/salmon"
+
+# Define directories
+TRANSCRIPTS="$HOME/workspace/EvoPhosphoOmics/refs/SC5314Ca.transcripts.fa"
+ALIGNDIR="$HOME/workspace/EvoPhosphoOmics/alignments/star/first/Ca"
+OUTDIR="$HOME/workspace/EvoPhosphoOmics/alignments/star/quant/Ca"
+
+# Create output directory
+mkdir -p "$OUTDIR"
+
+# Build filenames
+SAMPLE_ID=$(printf "%d" $SGE_TASK_ID)
+BAM_FILE="$ALIGNDIR/Ca.${SAMPLE_ID}.Aligned.toTranscriptome.out.bam"
+OUT_PATH="$OUTDIR/Ca.${SAMPLE_ID}.salmon_quant"
+
+# Run Salmon quantification using transcript FASTA (no prebuilt index)
+"$SALMON" quant -t "$TRANSCRIPTS" -l A -a "$BAM_FILE" -o "$OUT_PATH" --gcBias --seqBias
+"
+
+echo "**************************************"
+echo "commands=$CMD"
+echo "**************************************"
+
+###############################################
+# Set Salmon binary
+SALMON="$HOME/workspace/rnaseq/tools/salmon-latest_linux_x86_64/bin/salmon"
+
+# Define directories
+TRANSCRIPTS="$HOME/workspace/EvoPhosphoOmics/refs/SC5314Ca.transcripts.fa"
+ALIGNDIR="$HOME/workspace/EvoPhosphoOmics/alignments/star/first/Ca"
+OUTDIR="$HOME/workspace/EvoPhosphoOmics/alignments/star/quant/Ca"
+
+# Create output directory
+mkdir -p "$OUTDIR"
+
+# Build filenames
+SAMPLE_ID=$(printf "%d" $SGE_TASK_ID)
+BAM_FILE="$ALIGNDIR/Ca.${SAMPLE_ID}.Aligned.toTranscriptome.out.bam"
+OUT_PATH="$OUTDIR/Ca.${SAMPLE_ID}.salmon_quant"
+
+# Run Salmon quantification using transcript FASTA (no prebuilt index)
+"$SALMON" quant -t "$TRANSCRIPTS" -l A -a "$BAM_FILE" -o "$OUT_PATH" --gcBias --seqBias
+date
+end=`date +%s`
+runtime=$((end-start))
+echo "runtime=$runtime secs"
+

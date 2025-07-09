@@ -1,0 +1,89 @@
+
+#!/bin/bash
+#$ -N salmonIndexAll
+#$ -q UI,COE,BME-5335
+#$ -cwd
+#$ -j y
+#$ -o salmon_index_all.log
+#$ -pe smp 56 
+#$ -M jayelazuno@uiowa.edu
+#$ -m bea
+
+date
+start=`date +%s`
+CMD="
+SALMON="$HOME/workspace/rnaseq/tools/salmon-latest_linux_x86_64/bin/salmon"
+REFS="$HOME/workspace/EvoPhosphoOmics/refs"
+
+# Check if salmon exists
+if [ ! -x "$SALMON" ]; then
+  echo "ERROR: Salmon not found or not executable at $SALMON"
+  exit 1
+fi
+
+echo "Starting Salmon index for all species: $(date)"
+
+# BG2Cg
+echo "Indexing BG2Cg..."
+$SALMON index -t $REFS/BG2Cg.transcripts.fa \
+              -i $REFS/BG2Cg_salmon_index
+
+# s288cSc
+echo "Indexing s288cSc..."
+$SALMON index -t $REFS/s288cSc.transcripts.fa \
+              -i $REFS/s288cSc_salmon_index
+
+# CBS2105Kl
+echo "Indexing CBS2105Kl..."
+$SALMON index -t $REFS/CBS2105Kl.transcripts.fa \
+              -i $REFS/CBS2105Kl_salmon_index
+
+# SC5314Ca
+echo "Indexing SC5314Ca..."
+$SALMON index -t $REFS/SC5314Ca.transcripts.fa \
+              -i $REFS/SC5314Ca_salmon_index
+
+echo "All Salmon indexing complete"
+"
+echo "**************************************"
+echo "commands=$CMD"
+echo "**************************************"
+
+###############################################
+SALMON="$HOME/workspace/rnaseq/tools/salmon-latest_linux_x86_64/bin/salmon"
+REFS="$HOME/workspace/EvoPhosphoOmics/refs"
+
+# Check if salmon exists
+if [ ! -x "$SALMON" ]; then
+  echo "ERROR: Salmon not found or not executable at $SALMON"
+  exit 1
+fi
+
+echo "Starting Salmon index for all species: $(date)"
+
+# BG2Cg
+echo "Indexing BG2Cg..."
+$SALMON index -t $REFS/BG2Cg.transcripts.fa \
+              -i $REFS/BG2Cg_salmon_index
+
+# s288cSc
+echo "Indexing s288cSc..."
+$SALMON index -t $REFS/s288cSc.transcripts.fa \
+              -i $REFS/s288cSc_salmon_index
+
+# CBS2105Kl
+echo "Indexing CBS2105Kl..."
+$SALMON index -t $REFS/CBS2105Kl.transcripts.fa \
+              -i $REFS/CBS2105Kl_salmon_index
+
+# SC5314Ca
+echo "Indexing SC5314Ca..."
+$SALMON index -t $REFS/SC5314Ca.transcripts.fa \
+              -i $REFS/SC5314Ca_salmon_index
+
+
+date
+end=`date +%s`
+runtime=$((end-start))
+echo "runtime=$runtime secs"
+

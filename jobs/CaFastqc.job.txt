@@ -1,0 +1,50 @@
+
+
+#!/bin/bash
+#$ -t 1-26
+#$ -N CaFastqc
+#$ -o $JOB_NAME.$TASK_ID.log
+#$ -cwd
+#$ -j y
+#$ -S /bin/bash
+#$ -M jayelazuno@uiowa.edu
+#$ -m bea
+#$ -pe smp 56
+#$ -q UI 
+#$ -ckpt user
+
+# Start timing
+echo "Job started on $(hostname) at $(date)"
+start=`date +%s`
+
+# Set variables
+DATA_DIR=~/workspace/rnaseq/data/Pi/Ca
+FASTQC=~/workspace/rnaseq/tools/FastQC/fastqc
+OUTDIR="$DATA_DIR/fastqc_out"
+mkdir -p "$OUTDIR"
+
+# Identify input file for this array task
+cd "$DATA_DIR"
+FILES=(Ca_*.fastq.gz)
+INPUT_FILE=${FILES[$SGE_TASK_ID - 1]}
+
+# Run FastQC
+echo "Running FastQC on $INPUT_FILE"
+$FASTQC "$INPUT_FILE" -o "$OUTDIR"
+
+# Unzip corresponding FastQC output ZIP file
+BASENAME=$(basename "$INPUT_FILE" .fastq.gz)
+ZIPFILE="$OUTDIR/${BASENAME}_fastqc.zip"
+
+if [ -f "$ZIPFILE" ]; then
+    echo "Unzipping $ZIPFILE"
+    unzip -q "$ZIPFILE" -d "$OUTDIR"
+else
+    echo "WARNING: $ZIPFILE not found!"
+fi
+
+# End timing
+end=`date +%s`
+runtime=$((end - start))
+echo "Job finished in $runtime seconds on $(date)"
+
