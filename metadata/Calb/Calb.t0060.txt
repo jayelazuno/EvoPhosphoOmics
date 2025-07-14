@@ -1,0 +1,5 @@
+sample	id	path	group
+Ca.1	Ca.1	/Users/jayelazuno/workspace/EvoPhosphoOmics/alignments/star/quant/Ca/Calb_rep1/Ca.1.salmon_quant/quant.sf	Control
+Ca.14	Ca.14	/Users/jayelazuno/workspace/EvoPhosphoOmics/alignments/star/quant/Ca/Calb_rep2/Ca.14.salmon_quant/quant.sf	Control
+Ca.5	Ca.5	/Users/jayelazuno/workspace/EvoPhosphoOmics/alignments/star/quant/Ca/Calb_rep1/Ca.5.salmon_quant/quant.sf	Treatment
+Ca.18	Ca.18	/Users/jayelazuno/workspace/EvoPhosphoOmics/alignments/star/quant/Ca/Calb_rep2/Ca.18.salmon_quant/quant.sf	Treatment
