@@ -1,0 +1,12 @@
+sample	id	path	group	time
+Cgla.t0000	Cg.1	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.1.salmon_quant/quant.sf	control	t0000
+Cgla.t0030	Cg.2	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.2.salmon_quant/quant.sf	Treatment	t0030
+Cgla.t0060	Cg.3	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.3.salmon_quant/quant.sf	Treatment	t0060
+Cgla.t0090	Cg.4	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.4.salmon_quant/quant.sf	Treatment	t0090
+Cgla.t0120	Cg.5	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.5.salmon_quant/quant.sf	Treatment	t0120
+Cgla.t0150	Cg.6	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.6.salmon_quant/quant.sf	Treatment	t0150
+Cgla.t0180	Cg.7	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.7.salmon_quant/quant.sf	Treatment	t0180
+Cgla.t0210	Cg.8	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.8.salmon_quant/quant.sf	Treatment	t0210
+Cgla.t0240	Cg.9	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.9.salmon_quant/quant.sf	Treatment	t0240
+Cgla.t0360	Cg.10	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.10.salmon_quant/quant.sf	Treatment	t0360
+Cgla.t0480	Cg.11	~/Desktop/EvoPhosphoOmics/alignments/star/quant/Cg/Cgla.rep1/Cg.11.salmon_quant/quant.sf	Treatment	t0480
