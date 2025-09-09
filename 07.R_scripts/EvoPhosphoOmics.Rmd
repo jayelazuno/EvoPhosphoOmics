@@ -1152,8 +1152,7 @@ orthogroup2 <- orthogroups %>%
 # Long table of per-species core status
 status_long <- orthogroup2 %>%
   select(scer_core_status, cgla_core_status, calb_core_status, klac_core_status) %>%
-  mutate(row_id = row_number()) %>%
-  pivot_longer(-row_id, names_to = "species", values_to = "status") %>%
+  pivot_longer(everything(), names_to = "species", values_to = "status") %>%
   mutate(
     species = recode(species,
       scer_core_status = "Scer",
@@ -1161,13 +1160,14 @@ status_long <- orthogroup2 %>%
       calb_core_status = "Calb",
       klac_core_status = "Klac"
     ),
-    status = factor(status, levels = c("non-core","multi-core","single-core")),
+    # keep NA as a level:
+    status  = fct_explicit_na(status, na_level = "unmapped"),
+    status  = factor(status, levels = c("non-core","multi-core","single-core","unmapped")),
     species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
-  ) %>%
-  filter(!is.na(status))
+  )
 
-# Counts per status × species
-counts <- status_long %>%
+# Counts per status × species (includes "unmapped")
+counts <- status_long %>% 
   count(status, species, name = "n")
 
 # # (optional) percent per species
@@ -1298,24 +1298,27 @@ Klac_og <- Klac_mapped %>%
   ) #
 
 ################# count results 
-count_status <- function(df, status_col, label){
+# keep NA as a category called "unmapped", that is singleton clusters without OG assignment by orthofinder 
+count_status_keep_na <- function(df, status_col, label){
   df %>%
-    transmute(status = .data[[status_col]]) %>%
-    filter(!is.na(status)) %>%
-    count(status, name = "n") %>%
-    mutate(species = label)
+    mutate(
+      status = fct_explicit_na(.data[[status_col]], na_level = "unmapped"),
+      species = label
+    ) %>%
+    count(status, species, name = "n")
 }
 
 counts_og <- bind_rows(
-  count_status(Scer_og, "scer_core_status", "Scer"),
-  count_status(Cgla_og, "cgla_core_status", "Cgla"),
-  count_status(Calb_og, "calb_core_status", "Calb"),
-  count_status(Klac_og, "klac_core_status", "Klac")
+  count_status_keep_na(Scer_og, "scer_core_status", "Scer"),
+  count_status_keep_na(Cgla_og, "cgla_core_status", "Cgla"),
+  count_status_keep_na(Calb_og, "calb_core_status", "Calb"),
+  count_status_keep_na(Klac_og, "klac_core_status", "Klac")
 ) %>%
   mutate(
-    status  = factor(status,  levels = c("non-core","multi-core","single-core")),
+    status  = factor(status, levels = c("non-core","multi-core","single-core","unmapped")),
     species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
   )
+
 
 ####### plot data 
 plot_degs_og <- ggplot(counts_og, aes(x = status, y = n, fill = species)) +
@@ -1328,7 +1331,7 @@ plot_degs_og <- ggplot(counts_og, aes(x = status, y = n, fill = species)) +
 
 plot_degs_og
 
-########### # convert counts -> percent within each species
+########### # convert counts -> percent within each species. 
 counts_pct_og <- counts_og %>%
   group_by(species) %>%
   mutate(pct = 100 * n / sum(n)) %>%
@@ -1344,21 +1347,20 @@ plot_degs_pct_og <- ggplot(counts_pct_og, aes(x = status, y = pct, fill = specie
 plot_degs_og
 plot_degs_pct_og
 
-
+#################### percentage of deges in each core status classificationn as percentage of ref genome 
 # counts      = genome-wide counts by species × status  (denominator)
 # counts_og   = DEG counts      by species × status      (numerator)
-
 pct_tbl <- counts_og %>%
-  rename(n_degs = n) %>%
+  rename(n_degs  = n) %>%
   left_join(counts %>% rename(n_genes = n),
             by = c("species","status")) %>%
   mutate(
+    n_degs  = replace_na(n_degs, 0L),
     pct_of_genes = ifelse(is.na(n_genes) | n_genes == 0, NA_real_,
                           100 * n_degs / n_genes),
-    status  = factor(status,  levels = c("non-core","multi-core","single-core")),
-    species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
+    status  = factor(status,  levels = c("non-core","multi-core","single-core", "unmapped")),
+    species = factor(species, levels = c("Scer","Cgla","Calb","Klac", "unmapped"))
   )
-
 # Plot: DEGs as % of genes in each class (grouped by species)
 pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
@@ -1370,7 +1372,293 @@ pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species))
        title = "DEG burden by core status across species") +
   theme_minimal() + bold_theme
 
-pct_tbl_og 
+plot_degs_og ##
+pct_tbl_og
+
+```
+
+
+```{r doughty-fig3-d, warning=FALSE, message=FALSE}
+# Scer_DE_topGo.csv = full DESeq2 results for S. cerevisiae (all tested genes, not just DEGs), with columns like gene_id, log2FoldChange, padj.
+# 
+# orthogroup2 = your master orthology table containing for Scer the columns Scer_orthgrp_list (semi-colon list of SGD ORFs in the orthogroup) and scer_core_status (non-core / multi-core / single-core).
+# 
+# Scer_og = the already-subset Scer DEG table you created earlier (DEGs joined to orthogroup2, so it includes scer_core_st
+
+
+# S. cerevisiae — FULL DESeq results (not subsetted)
+scer_full <- read_csv(here("06.results", "Scer", "Scer_DE_topGo.csv"), 
+                      show_col_types = FALSE) %>%
+  mutate(scer_gene_id = gene_id)
+
+#Set thresholds
+
+fdr_cutoff <- 0.01   # instead of alpha
+lfc_thr    <- 1
+use_abs    <- FALSE
+
+# --- Build per-gene maps directly from orthogroup2 (explode *_orthgrp_list) --- Build a per-gene mapping from orthogroups to core status
+scer_map <- orthogroup2 %>%
+  transmute(scer_core_status,
+            scer_gene_id = strsplit(replace_na(Scer_orthgrp_list, ""), ";")) %>%
+  unnest_longer(scer_gene_id) %>%
+  mutate(scer_gene_id = na_if(trimws(scer_gene_id), "")) %>%
+  filter(!is.na(scer_gene_id), !is.na(scer_core_status)) %>%
+  distinct(scer_gene_id, scer_core_status) 
+
+## Join full DESeq table to core status and coerce numeric
+full_status_scer <- scer_full %>%
+  left_join(scer_map, by = "scer_gene_id") %>%
+  mutate(
+    padj_num = suppressWarnings(as.double(padj)),
+    l2fc_num = suppressWarnings(as.double(log2FoldChange))
+  ) %>%
+  filter(!is.na(scer_core_status), !is.na(padj_num))   # "detected mRNAs"
+
+## Define DE flags and overall DE rate
+is_deg_scer <- (full_status_scer$padj_num < fdr_cutoff) &
+  (if (use_abs) abs(full_status_scer$l2fc_num) > lfc_thr else full_status_scer$l2fc_num > lfc_thr)
+
+overall_deg  <- sum(is_deg_scer, na.rm = TRUE)
+overall_n    <- nrow(full_status_scer)
+overall_rate <- overall_deg / overall_n
+
+## --- Denominators: detected per class (same as before) ---
+denoms_scer <- full_status_scer %>%
+  count(status = scer_core_status, name = "n_class")
+
+## --- Numerators: DE within the SAME universe + SAME rule ---
+degs_by_class_scer <- full_status_scer %>%
+  mutate(is_deg = (padj_num < fdr_cutoff) &
+                   (if (use_abs) abs(l2fc_num) > lfc_thr else l2fc_num > lfc_thr)) %>%
+  group_by(status = scer_core_status) %>%
+  summarise(n_deg = sum(is_deg, na.rm = TRUE), .groups = "drop")
+
+## --- Enrichment table (Fig. 1c metrics) ---
+fig1c_scer <- denoms_scer %>%
+  left_join(degs_by_class_scer, by = "status") %>%
+  mutate(
+    n_deg        = replace_na(n_deg, 0L),
+    n_notdeg     = n_class - n_deg,
+    n_out_deg    = overall_deg - n_deg,
+    n_out_notdeg = (overall_n - n_class) - n_out_deg,
+    rate_class     = n_deg / n_class,
+    fold_enrichment = rate_class / overall_rate,
+    p_value = purrr::pmap_dbl(
+      list(n_deg, n_notdeg, n_out_deg, n_out_notdeg),
+      ~ fisher.test(matrix(c(..1, ..2, ..3, ..4), nrow = 2))$p.value
+    ),
+    species = "Scer"
+  )
+
+########################
+cgla_full <- read_csv(here("06.results", "Cgla", "Cgla_DE_topGo.csv"), 
+                      show_col_types = FALSE) %>%
+  mutate(cgla_gene_id = gene_id) 
+
+cgla_map <- orthogroup2 %>%
+  transmute(cgla_core_status,
+            cgla_gene_id = strsplit(replace_na(Cgla_orthgrp_list, ""), ";")) %>%
+  unnest_longer(cgla_gene_id) %>%
+  mutate(cgla_gene_id = na_if(trimws(cgla_gene_id), "")) %>%
+  filter(!is.na(cgla_gene_id), !is.na(cgla_core_status)) %>%
+  distinct(cgla_gene_id, cgla_core_status) %>% 
+  rename(qng_id = cgla_gene_id) %>%
+  left_join(Cgla_BG2Protmapping, by = "qng_id") %>%
+  select(gene_id, cgla_core_status) %>%
+  rename(cgla_gene_id = gene_id)
+  
+
+## --- Join full DESeq table to core status and coerce numeric ---
+full_status_cgla <- cgla_full %>%
+  left_join(cgla_map, by = "cgla_gene_id") %>%
+  mutate(
+    padj_num = suppressWarnings(as.double(padj)),
+    l2fc_num = suppressWarnings(as.double(log2FoldChange))
+  ) %>%
+  filter(!is.na(cgla_core_status), !is.na(padj_num))            # detected mRNAs in OGs
+
+## --- Define DE flags and overall DE rate (use the same fdr_cutoff/lfc_thr/use_abs you set) ---
+is_deg_cgla <- (full_status_cgla$padj_num < fdr_cutoff) &
+  (if (use_abs) abs(full_status_cgla$l2fc_num) > lfc_thr else full_status_cgla$l2fc_num > lfc_thr)
+
+overall_deg_cgla  <- sum(is_deg_cgla, na.rm = TRUE)
+overall_n_cgla    <- nrow(full_status_cgla)
+overall_rate_cgla <- overall_deg_cgla / overall_n_cgla
+
+## --- Denominators (detected per class) ---
+denoms_cgla <- full_status_cgla %>%
+  count(status = cgla_core_status, name = "n_class")
+
+## --- Numerators (your already-joined DEGs table for Cgla) ---
+degs_by_class_cgla <- full_status_cgla %>%
+  mutate(is_deg = (padj_num < fdr_cutoff) &
+                  (if (use_abs) abs(l2fc_num) > lfc_thr else l2fc_num > lfc_thr)) %>%
+  group_by(status = cgla_core_status) %>%
+  summarise(n_deg = sum(is_deg, na.rm = TRUE), .groups = "drop")
+## --- Enrichment table (Fig. 1c metrics) ---
+fig1c_cgla <- denoms_cgla %>%
+  left_join(degs_by_class_cgla, by = "status") %>%
+  mutate(
+    n_deg        = replace_na(n_deg, 0L),
+    n_notdeg     = n_class - n_deg,
+    n_out_deg    = overall_deg_cgla - n_deg,
+    n_out_notdeg = (overall_n_cgla - n_class) - n_out_deg,
+    rate_class     = n_deg / n_class,
+    fold_enrichment = rate_class / overall_rate_cgla,
+    p_value = purrr::pmap_dbl(
+      list(n_deg, n_notdeg, n_out_deg, n_out_notdeg),
+      ~ fisher.test(matrix(c(..1, ..2, ..3, ..4), nrow = 2))$p.value
+    ),
+    species = "Cgla"
+  )
+
+#############################
+########### 1 Full DESeq results for Calb (ALL tested genes)
+calb_full <- read_csv(here("06.results", "Calb", "Calb_DE_topGo.csv"), 
+                      show_col_types = FALSE) %>%
+  mutate(calb_gene_id = gene_id) 
+
+############# 2 Per-gene core status map from orthogroup2 (explode Calb_orthgrp_list)
+calb_map <- orthogroup2 %>%
+  transmute(calb_core_status,
+            calb_gene_id = strsplit(replace_na(Calb_orthgrp_list, ""), ";")) %>%
+  unnest_longer(calb_gene_id) %>%
+  mutate(calb_gene_id = na_if(trimws(calb_gene_id), "")) %>%
+  filter(!is.na(calb_gene_id), !is.na(calb_core_status)) %>%
+  distinct(calb_gene_id, calb_core_status)
+
+# 3) Join full DESeq to core status; coerce numerics; keep detected & mapped
+full_status_calb <- calb_full %>%
+  left_join(calb_map, by = "calb_gene_id") %>%
+  mutate(
+    padj_num = suppressWarnings(as.double(padj)),
+    l2fc_num = suppressWarnings(as.double(log2FoldChange))
+  ) %>%
+  filter(!is.na(calb_core_status), !is.na(padj_num))   # detected mRNAs inside OGs
+
+# 4) Overall DE flags/rate (same rule as you use for plotting)
+is_deg_calb <- (full_status_calb$padj_num < fdr_cutoff) &
+  (if (use_abs) abs(full_status_calb$l2fc_num) > lfc_thr else full_status_calb$l2fc_num > lfc_thr)
+
+overall_deg_calb  <- sum(is_deg_calb, na.rm = TRUE)
+overall_n_calb    <- nrow(full_status_calb)
+overall_rate_calb <- overall_deg_calb / overall_n_calb
+
+# 5) Denominators per class (detected)
+denoms_calb <- full_status_calb %>%
+  count(status = calb_core_status, name = "n_class")
+
+# 6) Numerators per class (DE within the SAME universe/rule)
+degs_by_class_calb <- full_status_calb %>%
+  mutate(is_deg = (padj_num < fdr_cutoff) &
+                   (if (use_abs) abs(l2fc_num) > lfc_thr else l2fc_num > lfc_thr)) %>%
+  group_by(status = calb_core_status) %>%
+  summarise(n_deg = sum(is_deg, na.rm = TRUE), .groups = "drop")
+
+# 7) Fig-1c style enrichment table (Calb)
+fig1c_calb <- denoms_calb %>%
+  left_join(degs_by_class_calb, by = "status") %>%
+  mutate(
+    n_deg        = replace_na(n_deg, 0L),
+    n_notdeg     = n_class - n_deg,
+    n_out_deg    = overall_deg_calb - n_deg,
+    n_out_notdeg = (overall_n_calb - n_class) - n_out_deg,
+    rate_class     = n_deg / n_class,
+    fold_enrichment = rate_class / overall_rate_calb,
+    p_value = pmap_dbl(
+      list(n_deg, n_notdeg, n_out_deg, n_out_notdeg),
+      ~ fisher.test(matrix(c(..1, ..2, ..3, ..4), nrow = 2))$p.value
+    ),
+    species = "Calb"
+  )
+#####################
+########### 1 Full DESeq results for Calb (ALL tested genes)
+klac_full <- read_csv(here("06.results", "Klac", "Klac_DE_topGo.csv"), 
+                      show_col_types = FALSE) %>%
+  mutate(klac_gene_id = gene_id) 
+
+############# 2 Per-gene core status map from orthogroup2 (explode Calb_orthgrp_list
+klac_map <- orthogroup2 %>%
+  transmute(klac_core_status,
+            klac_gene_id = strsplit(replace_na(Klac_orthgrp_list, ""), ";")) %>%
+  unnest_longer(klac_gene_id) %>%
+  mutate(klac_gene_id = na_if(trimws(klac_gene_id), "")) %>%
+  filter(!is.na(klac_gene_id), !is.na(klac_core_status)) %>%
+  distinct(klac_gene_id, klac_core_status) %>% 
+  rename(xp_id = klac_gene_id) %>%
+  left_join(Klac_xpklla0tmapping, by = "xp_id") %>%
+  select(locus_tag, klac_core_status) %>%
+  rename(klac_gene_id = locus_tag)
+  
+# 3) Join, coerce numerics, keep detected & mapped (denominator universe)
+full_status_klac <- klac_full %>%
+  left_join(klac_map, by = "klac_gene_id") %>%
+  mutate(
+    padj_num = suppressWarnings(as.double(padj)),
+    l2fc_num = suppressWarnings(as.double(log2FoldChange))
+  ) %>%
+  filter(!is.na(klac_core_status), !is.na(padj_num))
+
+# 4) Overall DE flags/rate (same rule you use everywhere)
+is_deg_klac <- (full_status_klac$padj_num < fdr_cutoff) &
+  (if (use_abs) abs(full_status_klac$l2fc_num) > lfc_thr else full_status_klac$l2fc_num > lfc_thr)
+
+overall_deg_klac  <- sum(is_deg_klac, na.rm = TRUE)
+overall_n_klac    <- nrow(full_status_klac)
+overall_rate_klac <- overall_deg_klac / overall_n_klac
+
+# 5) Denominators per class
+denoms_klac <- full_status_klac %>%
+  count(status = klac_core_status, name = "n_class")
+
+# 6) Numerators per class (DE within SAME universe/rule)
+degs_by_class_klac <- full_status_klac %>%
+  mutate(is_deg = (padj_num < fdr_cutoff) &
+                   (if (use_abs) abs(l2fc_num) > lfc_thr else l2fc_num > lfc_thr)) %>%
+  group_by(status = klac_core_status) %>%
+  summarise(n_deg = sum(is_deg, na.rm = TRUE), .groups = "drop")
+
+# 7) Fig-1c style enrichment table
+fig1c_klac <- denoms_klac %>%
+  left_join(degs_by_class_klac, by = "status") %>%
+  mutate(
+    n_deg        = replace_na(n_deg, 0L),
+    n_notdeg     = n_class - n_deg,
+    n_out_deg    = overall_deg_klac - n_deg,
+    n_out_notdeg = (overall_n_klac - n_class) - n_out_deg,
+    rate_class     = n_deg / n_class,
+    fold_enrichment = rate_class / overall_rate_klac,
+    p_value = pmap_dbl(
+      list(n_deg, n_notdeg, n_out_deg, n_out_notdeg),
+      ~ fisher.test(matrix(c(..1, ..2, ..3, ..4), nrow = 2))$p.value
+    ),
+    species = "Klac"
+  )
+
+# Combine and plot
+fig1c_all <- bind_rows(fig1c_scer, fig1c_cgla, fig1c_calb, fig1c_klac) %>%
+  mutate(
+    status  = factor(status, levels = c("non-core","multi-core","single-core")),
+    species = factor(species, levels = c("Scer","Cgla","Calb","Klac")),
+    sig = case_when(p_value < 0.001 ~ "***",
+                    p_value < 0.01  ~ "**",
+                    p_value < 0.05  ~ "*",
+                    TRUE            ~ "")
+  )
+
+p_fig1c_all <- ggplot(fig1c_all, aes(x=status, y=fold_enrichment, fill=species)) +
+  geom_hline(yintercept=1, linewidth=0.6, linetype=2) +
+  geom_col(position=position_dodge(0.8), width=0.7) +
+  geom_text(aes(label=sig),
+            position=position_dodge(0.8), vjust=-0.6, size=6, fontface="bold") +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.15))) +
+  coord_cartesian(clip = "off") +
+  labs(x=NULL, y="Fold enrichment of DE rate (class / overall)",
+       title="Stress adaptation responsive genes in -Pi") +
+  theme_minimal() + bold_theme
+
+p_fig1c_all
 
 ```
 
