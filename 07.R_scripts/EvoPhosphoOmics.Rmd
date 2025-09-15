@@ -7,6 +7,25 @@ output:
   html_document: default
   html_notebook: default
 ---
+Goal. Quantify how phosphate-limitation (-Pi) transcriptional responses are distributed across orthology classes (single-core, multi-core, non-core) in four yeasts—S. cerevisiae (Scer), C. glabrata (Cgla), C. albicans (Calb), and K. lactis (Klac)—and test whether specific classes are enriched for differentially expressed genes (DEGs).
+
+Biological question. Are stress-responsive genes preferentially drawn from duplicated (multi-copy) or lineage-specific (non-core) gene sets, as suggested by Doughty et al., or from conserved single-copy (single-core) genes? Do patterns differ by species?
+
+######################################
+Load raw counts (Salmon)
+Scer, Cgla, Calb, Klac each import the species-specific salmon.merged.gene_counts.tsv tables.
+These are the per-gene count matrices that DESeq2 will ingest.
+
+Set output locations
+*_results paths point to where species-specific DE/summary CSVs will be written.
+*_plots paths point to where figures for each species will be saved.
+
+Using here() keeps paths project-relative for reproducibility.
+
+Load orthology mapping
+orthogroups reads the consolidated OrthoFinder table (species_orthology.tsv).
+This file provides per-species gene lists per orthogroup and is later used to assign core status (single-core, multi-core, non-core) to each gene.
+
 
 ```{r loadrequired-packages, warning=FALSE, message=FALSE}
 #if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -22,6 +41,7 @@ output:
 #BiocManager::install("clusterProfiler")
 #BiocManager::install("tidyverse")
 #BiocManager::install("here")
+#BiocManager::install("data.table")
 
 ############ install topGo for functional analysis of DESeq genes 
 #if (!requireNamespace("BiocManager", quietly=TRUE))
@@ -41,6 +61,7 @@ library(dplyr)
 library(tidyverse)
 library(readxl)
 library(here)
+library(data.table)
 ###### Load species raw count matrices
 ####### S. cerevisiae
 Scer <- read_tsv(here("05.metadata", "Scer", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
@@ -54,16 +75,12 @@ Calb <- read_tsv(here("05.metadata", "Calb", "salmon.merged.gene_counts.tsv"), s
 ####### K. lactis 
 Klac <- read_tsv(here("05.metadata", "Klac", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
 
-#### Load species ID mapping data
-#load(here("RData_perSpecies_HOG_clean_07142025.RData"))
-# str(all_species_data$ca)  # optionally inspect the structure
-
-
 ##### Create file paths for output
 Scer_results <- here("06.results", "Scer")
 Cgla_results <- here("06.results", "Cgla")
 Calb_results <- here("06.results", "Calb")
 Klac_results <- here("06.results", "Klac")
+combined <- here("06.results", "combined")
 
 ###### Directories for analysis/plots
 Scer_plots <- here("08.plots", "Scer")
@@ -71,12 +88,52 @@ Cgla_plots <- here("08.plots", "Cgla")
 Calb_plots <- here("08.plots", "Calb")
 Klac_plots <- here("08.plots", "Klac")
 
+
 ############ load orthogroup data file 
 orthogroups <- read_tsv(here("02.annotationdata", "species_orthology.tsv"),  show_col_types = FALSE)
 
-######## load the species duplication file be used for differentiating between single core and multicore genes 
-orthogroupsDups <- read_tsv(here("02.annotationdata", "species_duplications.tsv"),  show_col_types = FALSE)
 ```
+
+Differential gene expression analysis with DESeq2
+
+Goal. Estimate gene-level differential expression between control (t0000) and treatment (t0060) for each species, collapsing technical replicates, and produce (i) a full results table for enrichment “universe” analyses and (ii) clean DEG sets (all / up / down) plus QC plots.
+
+What this chunk does (re-usable for any species):
+Select samples for the contrast.
+Keep only columns matching t0000|t0060; coerce counts to integers; set gene_id as rownames.
+
+Build sample metadata and handle replicates.
+Derive condition from column names (untreated, treated).
+Create sample IDs to group technical runs (e.g., 1–4) and set run to the original column names.
+
+Construct DESeq2 object and collapse technical replicates.
+DESeqDataSetFromMatrix(..., design = ~ condition) → model matrix.
+collapseReplicates() sums counts within each biological sample across runs.
+Re-apply the condition labels to the collapsed columns.
+
+Fit the model and shrink effect sizes.
+DESeq() fits NB GLMs.
+results(..., contrast = c("condition","treated","untreated")) extracts treated vs control.
+lfcShrink(..., type = "apeglm") returns stabilized log2FCs for reporting/plots.
+
+Export the full universe for GO/topGO.
+Convert to a data frame, clean gene_id (e.g., drop gene- prefix), and write <Species>_DE_topGo.csv (all tested genes, not just significant).
+
+Call significant DEGs (and split by direction).
+Apply thresholds padj < 0.01 and |log2FoldChange| > 1.
+Split into resSig*_up (log2FC > 0) and resSig*_down (log2FC < 0).
+Write three CSVs (all / up / down) and simple ID lists (*_UP_ids.txt, *_DOWN_ids.txt).
+
+QC & exploratory visualizations.
+rlog() → PCA plot to confirm replicate clustering and treatment separation.
+Histograms of raw p-values and FDR to check multiple-testing behavior.
+MA plot to inspect mean–FC trends.
+Volcano plot with LFC/FDR cut lines to visualize significant genes.
+
+Notes & conventions.
+Contrast direction is treated vs untreated; positive log2FC means induced in treatment.\
+Collapsing technical replicates improves variance estimates; biological replicates remain separate in the model.
+Keep this workflow identical across species; only the input count matrix and output paths change.
 
 
 ```{r -Pi-Scer-t0060-Deseq-Analysis, warning=FALSE, message=FALSE}
@@ -713,7 +770,26 @@ abline(h = -log10(pval_threshold), col = "green3", lty = 2)
 abline(v = c(-lfc_threshold, lfc_threshold), col = "blue", lty = 2)
 #dev.off()
 ```
+Goal.
+Summarize the number of significant DE genes (UP vs DOWN) per species and sanity-check a conserved marker (PHO84 ortholog) at the sample level.
+What this chunk does (applies to all species):
 
+Count DEGs by direction.
+Uses your already filtered DE tables (resSigsc, resSigcg, resSigca, resSigkl).
+
+Defines UP as log2FC > 0, DOWN as log2FC < 0.
+Assumes significance was called with padj < 0.01 and |log2FC| > 1. If you’re replicating Doughty’s Fig. 1c (UP-only), adjust accordingly.
+
+Summarize and plot totals.
+Builds deg_summary (UP, DOWN, Total) across species.
+Converts to long format and makes a grouped bar chart (Upregulated vs Downregulated) per species.
+
+Gene-level expression checks (PHO84 orthologs).
+Uses plotCounts() on the collapsed DESeq2 objects (*dds_collapsed) to extract normalized counts for each PHO84 ortholog.
+Plots log-scaled counts by condition with jittered points to show replicate spread.
+
+Why this step matters.
+The PHO84 plots verify that a canonical phosphate transporter behaves as expected in each species and that replicate variance looks reasonable.
 
 ```{r explore-DEGs-count-plotCount}
 # Count significant DEGs
@@ -1080,79 +1156,75 @@ library(topGO)
 # Non-core: no ortholog detected in at least one of the other species (not shared with ). 
 
 # ---- extracting ID patterns with regexp----
-scer_pat <- "\\bY[A-P][LR][0-9]{3}[WC](?:-[A-Z])?\\b"        # SGD ORFs
-cgla_pat <- "QNG\\d+(?:\\.\\d+)?"                           # Cg: QNG 
-calb_pat <- "orf\\d+\\.\\d+"                                # Ca: orf19.xxxx
-klac_pat <- "XP_\\d+(?:\\.\\d+)?"                    # Kl: RefSeq 
 
-collapse_or_na <- function(v) { v <- unique(v); if (length(v)) paste(v, collapse = ";") else NA_character_ }
-first_or_na    <- function(v) { v <- unique(v); if (length(v)) v[[1]] else NA_character_ }
+scer_pat <- "\\bY[A-P][LR][0-9]{3}[WC](?:-[A-Z])?\\b"   # SGD ORFs
+cgla_pat <- "QNG\\d+(?:\\.\\d+)?"                      # Cg: QNG only
+calb_pat <- "orf\\d+\\.\\d+"                           # Ca: orf19.xxxx
+klac_pat <- "XP_\\d+(?:\\.\\d+)?"                      # Kl: RefSeq XP_
 
-# core classifier for a focal species given copy counts
+collapse_or_na <- function(v) { v <- unique(v); if (length(v)) paste(v, collapse=";") else NA_character_ }
+
+# Core-status helper
 core_status <- function(n_self, n_o1, n_o2, n_o3){
   dplyr::case_when(
-    n_self == 0                          ~ NA_character_,   # focal absent
-    n_o1 == 0 | n_o2 == 0 | n_o3 == 0    ~ "non-core",      # not shared with all others
-    n_self >= 2                           ~ "multi-core",    # shared (all >0), self has 2+
-    n_self == 1                           ~ "single-core"    # shared (all >0), self has 1
+    n_self == 0                        ~ NA_character_,   # focal absent
+    n_o1 == 0 | n_o2 == 0 | n_o3 == 0 ~ "non-core",      # not shared with all others
+    n_self >= 2                        ~ "multi-core",    # shared, self has 2+
+    n_self == 1                        ~ "single-core"    # shared, self has 1
   )
 }
 
-orthogroup2 <- orthogroups %>%
-  # keep the foursome + IDs; normalize empties to NA
-  select(HOG, OG, `Gene Tree Parent Clade`,
-         S_cerevisiae, C_glabrata, C_albicans, K_lactis) %>%
+# ================== SLIMMED ORTHOGROUP TABLE ==================
+orthogroups_cleaned <- orthogroups %>%
+  select(OG, S_cerevisiae, C_glabrata, C_albicans, K_lactis) %>%
   mutate(across(c(S_cerevisiae, C_glabrata, C_albicans, K_lactis),
                 ~ na_if(trimws(.), ""))) %>%
 
-  # ---- extract ALL IDs per species (list-columns) ----
+  # Extract all gene IDs per species (list-columns)
   mutate(
     scer_ids = str_extract_all(replace_na(S_cerevisiae, ""), scer_pat) %>% lapply(unique),
     cgla_ids = str_extract_all(replace_na(C_glabrata,  ""), cgla_pat) %>% lapply(unique),
     calb_ids = str_extract_all(replace_na(C_albicans,  ""), calb_pat) %>% lapply(unique),
     klac_ids = str_extract_all(replace_na(K_lactis,    ""), klac_pat) %>% lapply(unique),
 
-    # join into readable orthogroup lists; also keep a primary ID
+    # Flatten to readable lists for each orthogroup
     Scer_orthgrp_list = vapply(scer_ids, collapse_or_na, character(1)),
     Cgla_orthgrp_list = vapply(cgla_ids, collapse_or_na, character(1)),
     Calb_orthgrp_list = vapply(calb_ids, collapse_or_na, character(1)),
     Klac_orthgrp_list = vapply(klac_ids, collapse_or_na, character(1)),
 
-    scer_gene_id = vapply(scer_ids, first_or_na, character(1)),
-    cgla_gene_id = vapply(cgla_ids, first_or_na, character(1)),
-    calb_gene_id = vapply(calb_ids, first_or_na, character(1)),
-    klac_gene_id = vapply(klac_ids, first_or_na, character(1)),
-
-    # copy counts per species
-    n_Scer = lengths(scer_ids),
-    n_Cgla = lengths(cgla_ids),
-    n_Calb = lengths(calb_ids),
-    n_Klac = lengths(klac_ids)
+    # Copy counts per species (rename to n_orthgrp_* as requested)
+    n_orthgrp_Scer = lengths(scer_ids),
+    n_orthgrp_Cgla = lengths(cgla_ids),
+    n_orthgrp_Calb = lengths(calb_ids),
+    n_orthgrp_Klac = lengths(klac_ids)
   ) %>%
 
-  # ---- core status per your rule, for EACH species ----
+  # Core status for EACH focal species using the n_orthgrp_* counts
   mutate(
-    scer_core_status = core_status(n_Scer, n_Cgla, n_Calb, n_Klac),
-    cgla_core_status = core_status(n_Cgla, n_Scer, n_Calb, n_Klac),
-    calb_core_status = core_status(n_Calb, n_Scer, n_Cgla, n_Klac),
-    klac_core_status = core_status(n_Klac, n_Scer, n_Cgla, n_Calb)
+    scer_core_status = core_status(n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Calb, n_orthgrp_Klac),
+    cgla_core_status = core_status(n_orthgrp_Cgla, n_orthgrp_Scer, n_orthgrp_Calb, n_orthgrp_Klac),
+    calb_core_status = core_status(n_orthgrp_Calb, n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Klac),
+    klac_core_status = core_status(n_orthgrp_Klac, n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Calb)
   ) %>%
 
-  # ---- tidy column order: place lists/IDs/status next to each species ----
-  relocate(Scer_orthgrp_list, scer_gene_id, scer_core_status, .after = S_cerevisiae) %>%
-  relocate(Cgla_orthgrp_list, cgla_gene_id, cgla_core_status, .after = C_glabrata) %>%
-  relocate(Calb_orthgrp_list, calb_gene_id, calb_core_status, .after = C_albicans) %>%
-  relocate(Klac_orthgrp_list, klac_gene_id, klac_core_status, .after = K_lactis) #%>%
+  # Keep only the relevanr columns 
+  select(
+    OG,
+    S_cerevisiae, Scer_orthgrp_list, n_orthgrp_Scer, scer_core_status,
+    C_glabrata,   Cgla_orthgrp_list, n_orthgrp_Cgla, cgla_core_status,
+    C_albicans,   Calb_orthgrp_list, n_orthgrp_Calb, calb_core_status,
+    K_lactis,     Klac_orthgrp_list, n_orthgrp_Klac, klac_core_status
+  )
 
-  # drop internals if you want a slim table
-  #select(-scer_ids, -cgla_ids, -calb_ids, -klac_ids,
-         #-n_Scer, -n_Cgla, -n_Calb, -n_Klac)
+####### write into csv file 
+write_csv(orthogroups_cleaned, file.path(combined, "20250910_orthogroups_cleaned.csv"))
 
 ####################### visualize results 
 # Long table of per-species core status
-status_long <- orthogroup2 %>%
+status_long <- orthogroups_cleaned %>%
   select(scer_core_status, cgla_core_status, calb_core_status, klac_core_status) %>%
-  pivot_longer(everything(), names_to = "species", values_to = "status") %>%
+  tidyr::pivot_longer(everything(), names_to = "species", values_to = "status") %>%
   mutate(
     species = recode(species,
       scer_core_status = "Scer",
@@ -1160,7 +1232,6 @@ status_long <- orthogroup2 %>%
       calb_core_status = "Calb",
       klac_core_status = "Klac"
     ),
-    # keep NA as a level:
     status  = fct_explicit_na(status, na_level = "unmapped"),
     status  = factor(status, levels = c("non-core","multi-core","single-core","unmapped")),
     species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
@@ -1374,6 +1445,88 @@ pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species))
 
 plot_degs_og ##
 pct_tbl_og
+
+################################## get the full gene list from the ref folder and create data frame with gene_id and gene_name. Set difference from this and the orthogroup data set to kn ow which genes are not in the orthogroup data set 
+
+scer_gtf <- here("04.refs", "s288cSc-R64.gtf") 
+gtf <- fread(
+  scer_gtf, sep = "\t", header = FALSE, data.table = FALSE,
+  col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
+  quote = "" #, comment.char = "#"
+)
+
+get_attr <- function(x, key){
+  m <- str_match(x, paste0(key, " \"([^\"]+)\""))
+  m[,2]
+}
+
+scer_gene_list <- gtf %>%
+  transmute(
+    feature,
+    gene_id   = get_attr(attribute, "gene_id"),
+    gene_name = coalesce(get_attr(attribute, "gene_name"),
+                         get_attr(attribute, "Name"))
+  ) %>%
+  filter(!is.na(gene_id)) %>%
+  { if (any(.$feature == "gene")) filter(., feature == "gene") else . } %>%
+  distinct(gene_id, gene_name) %>%
+  mutate(
+    gene_id   = sub("^gene-", "", gene_id)
+  )
+
+write_csv(scer_gene_og_status, file.path(Scer_results, "20250910_Scer_gene_list.csv"))
+############### list all genes in the orthgrp in Scer 
+scer_og_map <- orthogroups_cleaned %>%
+  select(OG, S_cerevisiae, Scer_orthgrp_list) %>%
+  mutate(Scer_orthgrp_list = na_if(Scer_orthgrp_list, "")) %>%
+  separate_rows(Scer_orthgrp_list, sep = ";", convert = FALSE) %>%
+  transmute(
+    OG,
+    scer_gene_id = trimws(Scer_orthgrp_list)
+  ) %>%
+  filter(!is.na(scer_gene_id), scer_gene_id != "") %>%
+  distinct()
+########2) Join the GTF gene list to the OG map to flag coverage
+scer_gene_og_status <- scer_gene_list %>%
+  select(gene_id, gene_name) %>%
+  left_join(scer_og_map, by = c("gene_id" = "scer_gene_id")) %>%
+  mutate(in_orthogroup = !is.na(OG))
+write_csv(scer_gene_og_status, file.path(Scer_results, "20250911_orthgrps_gene_list.csv"))
+
+# Genes present in GTF but missing from orthogroups
+scer_missing_from_og <- scer_gene_og_status %>% filter(!in_orthogroup)
+write_csv(scer_missing_from_og, file.path(Scer_results, "20250911_scer_missing_from_og.csv"))
+
+
+############### C.glabrata 
+# --- Inputs ---
+cgla_gtf <- here("04.refs", "BG2Cg.gtf")   
+get_attr <- function(x, key){
+  m <- stringr::str_match(x, paste0(key, " \"([^\"]+)\""))
+  m[,2]
+}
+
+# 1) Parse GTF -> raw gene table (gene_id, gene_name)
+gtf_cg <- fread(
+  cgla_gtf, sep = "\t", header = FALSE, data.table = FALSE,
+  col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
+  quote = "" #comment.char = "#"
+)
+
+cgla_gene_list_raw <- gtf_cg %>%
+  transmute(
+    feature,
+    gene_id   = get_attr(attribute, "gene_id"),   # e.g., GWK60_* or CAGL0*
+    gene_name = coalesce(get_attr(attribute, "gene_name"),
+                         get_attr(attribute, "Name"))
+  ) %>%
+  filter(!is.na(gene_id)) %>%
+  { if (any(.$feature == "gene")) filter(., feature == "gene") else . } %>%
+  distinct(gene_id, gene_name) %>%
+  mutate(gene_id = sub("^gene-", "", gene_id)) 
+
+
+
 
 ```
 
