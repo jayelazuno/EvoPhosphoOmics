@@ -1139,10 +1139,833 @@ ggsave(filename = file.path(Klac_plots, "Kl Go Term t0000_vs_t0060.pdf"),
 
 ############ functional analysis with topGo 
 library(topGO)
+library(biomaRt)
+library(org.Sc.sgd.db)
+library(GO.db)
+
+#plot dirs
+Scer_plots <- here::here("08.plots","Scer"); dir.create(Scer_plots, recursive = TRUE, showWarnings = FALSE)
+Cgla_plots <- here::here("08.plots","Cgla"); dir.create(Cgla_plots, recursive = TRUE, showWarnings = FALSE)
+Calb_plots <- here::here("08.plots","Calb"); dir.create(Calb_plots, recursive = TRUE, showWarnings = FALSE)
+Klac_plots <- here::here("08.plots","Klac"); dir.create(Klac_plots, recursive = TRUE, showWarnings = FALSE)
+
+#helpers to save diagnostics
+save_pvalue_hist <- function(result_obj, outfile, title = "P-value distribution") {
+  pdf(outfile, width = 7, height = 5)
+  pvals <- score(result_obj)
+  hist(pvals, breaks = 50, main = title, xlab = "pvals")
+  abline(h = length(pvals)/50, col = "red", lty = 2)
+  dev.off()
+}
+save_go_size_hist <- function(GOdata, outfile, title) {
+  pdf(outfile, width = 7, height = 5)
+  ts <- termStat(GOdata)
+  hist(ts$Annotated, breaks = 50, main = title, xlab = "Number of annotated genes")
+  dev.off()
+}
+
+############ PREPARE UNIFORM PLOTTING HELPERS 
+library(ggplot2)
+library(tidyr)
+library(stringr)
+
+#helpers for uniform plots across species
+save_algo_barplot <- function(res_tbl, species, outdir) {
+  pd <- res_tbl %>%
+    dplyr::slice_head(n = 20) %>%
+    dplyr::select(GO.ID, Term, classic, elim, weight01) %>%
+    tidyr::pivot_longer(cols = c(classic, elim, weight01),
+                        names_to = "Algorithm",
+                        values_to = "pvalue") %>%
+    dplyr::mutate(pvalue = as.numeric(pvalue),
+                  negLog10P = -log10(pvalue + 1e-10),
+                  Term = stringr::str_trunc(Term, 40))
+  p <- ggplot(pd,
+              aes(x = reorder(Term, negLog10P),
+                  y = negLog10P,
+                  fill = Algorithm)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    coord_flip() +
+    labs(title = paste(species, ": topGO Algorithm Comparison"),
+         x = NULL, y = "-log10(p-value)") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "top",
+          axis.text.y = element_text(size = 10)) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed",
+               color = "red", alpha = 0.5)
+  ggsave(file.path(outdir, paste0(species, "_topGO_algorithm_comparison.pdf")),
+         plot = p, width = 10, height = 8, useDingbats = FALSE)
+}
+
+save_go_dag <- function(GOdata, result_weight01, species, outdir) {
+  #png hi-res
+  outfile_png <- file.path(outdir, paste0(species, "_GO_graph_top10.png"))
+  grDevices::png(outfile_png,
+                 width = 6000, height = 4500,
+                 res = 600, type = "cairo", antialias = "subpixel")
+  op <- par(mai = c(0, 0, 0, 0))
+  try({
+    showSigOfNodes(GOdata,
+                   score(result_weight01),
+                   firstSigNodes = 10,
+                   useInfo = "all")
+  }, silent = TRUE)
+  try(par(op), silent = TRUE)
+  try(grDevices::dev.off(), silent = TRUE)
+
+  #pdf via Cairo for crisp vectors
+  if (requireNamespace("Cairo", quietly = TRUE)) {
+    outfile_pdf <- file.path(outdir, paste0(species, "_GO_graph_top10.pdf"))
+    Cairo::CairoPDF(outfile_pdf, width = 16, height = 12)
+    op2 <- par(mai = c(0, 0, 0, 0))
+    try({
+      showSigOfNodes(GOdata,
+                     score(result_weight01),
+                     firstSigNodes = 10,
+                     useInfo = "all")
+    }, silent = TRUE)
+    try(par(op2), silent = TRUE)
+    try(grDevices::dev.off(), silent = TRUE)
+  }
+}
+
+############PREPARE GENE-TO-GO MAPPINGS
+
+create_gene2GO_mapping <- function(species, gene_ids, annotation_file = NULL) {
+  
+  if (species == "Scer") {
+    #use org.Sc.sgd.db for S. cerevisiae
+    #gene_ids already cleaned from scer_topGo
+    
+    #get GO annotations
+    go_map <- select(org.Sc.sgd.db, 
+                     keys = gene_ids,
+                     columns = c("GOALL", "EVIDENCEALL"),
+                     keytype = "ORF")
+    
+    cat("Initial GO mappings found:", nrow(go_map), "\n")
+    
+    #remove NA and get GO ontology info
+    go_map <- go_map[!is.na(go_map$GOALL), ]
+    cat("After removing NA:", nrow(go_map), "\n")
+    
+    go_bp <- select(GO.db, keys = unique(go_map$GOALL), 
+                    columns = "ONTOLOGY", keytype = "GOID")
+    go_map <- merge(go_map, go_bp, by.x = "GOALL", by.y = "GOID")
+    cat("After merge with GO.db:", nrow(go_map), "\n")
+    
+    #filter for BP only
+    go_map <- go_map[go_map$ONTOLOGY == "BP", ]
+    cat("After BP filter:", nrow(go_map), "\n")
+    
+    #convert to gene2GO list format
+    gene2GO <- split(go_map$GOALL, go_map$ORF)
+    
+  } else if (species == "Cgla") {
+    #parse GAF format for C. glabrata from consolidated CGD file
+    cat("Parsing GAF file for C. glabrata\n")
+    
+    #load GWK60 to CAGL0 mapping
+    cgla_mapping <- read.csv(here::here("05.metadata", "Cgla", "qng_gwk_cagl_threeway_map_complete.csv"))
+    
+    #create lookup from CAGL0 to GWK60 for reverse mapping
+    cagl_to_gwk <- setNames(cgla_mapping$gwk60_id, cgla_mapping$cagl_id)
+    
+    #read GAF file
+    gaf_data <- read.delim(annotation_file, header = FALSE, comment.char = "!", 
+                           stringsAsFactors = FALSE, sep = "\t")
+    
+    #filter for C. glabrata entries (taxon:284593)
+    cgla_entries <- gaf_data[grepl("taxon:284593", gaf_data$V13), ]
+    cat("C. glabrata entries found:", nrow(cgla_entries), "\n")
+    
+    #extract gene2GO mappings
+    gene2GO <- list()
+    for(i in 1:nrow(cgla_entries)) {
+      #extract CAGL0 ID from column 11 (first element before pipe)
+      synonyms <- strsplit(cgla_entries$V11[i], "\\|")[[1]]
+      cagl_id <- synonyms[1]
+      
+      #get corresponding GWK60 ID
+      gwk_id <- cagl_to_gwk[cagl_id]
+      
+      #only process if we have a GWK60 mapping and it's in our input list
+      if(!is.na(gwk_id) && gwk_id %in% gene_ids) {
+        go_term <- cgla_entries$V5[i]
+        aspect <- cgla_entries$V9[i]
+        
+        #only keep BP terms (P = biological process)
+        if(aspect == "P") {
+          if(gwk_id %in% names(gene2GO)) {
+            gene2GO[[gwk_id]] <- c(gene2GO[[gwk_id]], go_term)
+          } else {
+            gene2GO[[gwk_id]] <- go_term
+          }
+        }
+      }
+    }
+    
+    #remove duplicates
+    gene2GO <- lapply(gene2GO, unique)
+    cat("Genes with GO annotations:", length(gene2GO), "\n")
+    
+  } else if (species == "Calb") {
+    #parse GAF format for C. albicans from consolidated CGD file
+    cat("Parsing GAF file for C. albicans\n")
+    
+    #load A21/A22 <-> orf19 mapping (columns expected from your builder: a22_id, a21_orf19, a22_orf19)
+    calb_mapping <- read.csv(here::here("05.metadata", "Calb", "a21_to_a22_orf19_mapping.csv"),
+                             stringsAsFactors = FALSE)
+    
+    #normalize column names defensively
+    names(calb_mapping) <- tolower(names(calb_mapping))
+    #we only need: a22_id and an orf19 column; if both a21_orf19 and a22_orf19 exist, they are identical strings
+    if (!("a22_id" %in% names(calb_mapping)) ||
+        !any(c("a21_orf19","a22_orf19","orf19") %in% names(calb_mapping))) {
+      stop("Calb mapping file must contain a22_id and an orf19 column (a21_orf19 / a22_orf19 / orf19).")
+    }
+    if (!("orf19" %in% names(calb_mapping))) {
+      calb_mapping$orf19 <- if ("a21_orf19" %in% names(calb_mapping)) calb_mapping$a21_orf19 else calb_mapping$a22_orf19
+    }
+    calb_mapping <- unique(calb_mapping[, c("a22_id","orf19")])
+    
+    #build lookups to map your input IDs (which may be orf19.* or A22 IDs) to orf19 IDs
+    orf19_to_orf19 <- setNames(calb_mapping$orf19, calb_mapping$orf19)   # identity
+    a22_to_orf19   <- setNames(calb_mapping$orf19, calb_mapping$a22_id)  # A22 -> orf19
+    
+    #convert input gene IDs to orf19 IDs (keep original ids for naming gene2GO later)
+    input <- gene_ids
+    is_orf19 <- grepl("^orf19\\.[0-9]+$", input)
+    mapped_orf19 <- rep(NA_character_, length(input))
+    mapped_orf19[is_orf19]  <- orf19_to_orf19[input[is_orf19]]
+    mapped_orf19[!is_orf19] <- a22_to_orf19[input[!is_orf19]]
+    
+    keep <- !is.na(mapped_orf19)
+    input_kept <- input[keep]
+    orf19_ids  <- mapped_orf19[keep]
+    
+    cat("Input genes:", length(input), "\n")
+    cat("Successfully mapped to orf19:", length(orf19_ids), "\n")
+    
+    #read GAF file
+    gaf_data <- read.delim(annotation_file, header = FALSE, comment.char = "!", 
+                           stringsAsFactors = FALSE, sep = "\t")
+    
+    #filter for C. albicans entries (taxon:237561)
+    calb_entries <- gaf_data[grepl("taxon:237561", gaf_data$V13), ]
+    cat("C. albicans entries found:", nrow(calb_entries), "\n")
+    
+    #tokenize synonyms; include V2 (DB_Object_ID) itself as a token for matching
+    split_syns <- function(s) unlist(strsplit(s, "\\|"), use.names = FALSE)
+    tokens_by_row <- lapply(seq_len(nrow(calb_entries)), function(i) {
+      syns <- calb_entries$V11[i]
+      dbid <- calb_entries$V2[i]
+      if (is.na(syns) || syns == "") return(dbid)
+      c(dbid, split_syns(syns))
+    })
+    
+    #extract gene2GO mappings keyed by your ORIGINAL input IDs
+    gene2GO <- vector("list", length = 0)
+    for (i in seq_len(nrow(calb_entries))) {
+      aspect <- calb_entries$V9[i]
+      if (aspect != "P") next  #keep BP only
+      
+      go_term <- calb_entries$V5[i]
+      toks <- tokens_by_row[[i]]
+      
+      #does this row carry an orf19 we mapped to?
+      hit_orf19 <- toks[grepl("^orf19\\.[0-9]+$", toks)]
+      if (length(hit_orf19) == 0) next
+      
+      #which of our inputs map to this orf19?
+      matched_inputs <- input_kept[orf19_ids %in% hit_orf19]
+      if (length(matched_inputs) == 0) next
+      
+      for (gid in matched_inputs) {
+        if (is.null(gene2GO[[gid]])) {
+          gene2GO[[gid]] <- go_term
+        } else {
+          gene2GO[[gid]] <- c(gene2GO[[gid]], go_term)
+        }
+      }
+    }
+    
+    #deduplicate & ensure character vectors
+    if (length(gene2GO) > 0) {
+      gene2GO <- lapply(gene2GO, function(x) unique(as.character(x)))
+      #drop any empties just in case
+      gene2GO <- gene2GO[lengths(gene2GO) > 0]
+    }
+    
+    cat("Genes with GO annotations (Calb):", length(gene2GO), "\n")
+    
+    
+  } else if (species == "Klac") {
+    #parse GAF format for K. lactis
+    cat("Parsing GAF file for K. lactis\n")
+    
+    #read your locus_tag <-> geneid map
+    lt_map <- read.csv(here::here("05.metadata","Klac","klac_locus_tag_to_geneid.csv"),
+                       stringsAsFactors = FALSE)
+    names(lt_map) <- tolower(names(lt_map))
+    stopifnot(all(c("locus_tag","geneid") %in% names(lt_map)))
+    lt2gid <- setNames(lt_map$geneid, lt_map$locus_tag)
+    
+    #map input ids (klla0_*) to ncbi geneid
+    input <- gene_ids
+    is_num <- grepl("^[0-9]+$", input)
+    input_gid <- rep(NA_character_, length(input))
+    input_gid[is_num]  <- input[is_num]
+    input_gid[!is_num] <- lt2gid[input[!is_num]]
+    
+    keep <- !is.na(input_gid)
+    if (!any(keep)) { warning("K. lactis: no IDs mapped to GeneID via klac_locus_tag_to_geneid.csv"); return(list()) }
+    input_gid <- input_gid[keep]
+    input_orig <- input[keep]
+    
+    #read GAF and keep k. lactis bp rows
+    gaf_data <- read.delim(annotation_file, header = FALSE, comment.char = "!", 
+                           stringsAsFactors = FALSE, sep = "\t")
+    #columns: 2=db_object_id (geneid), 5=go id, 9=aspect, 13=taxon
+    colnames(gaf_data)[c(2,5,9,13)] <- c("db_obj_id","go_id","aspect","taxon")
+    gaf_data <- gaf_data[grepl("taxon:28985", gaf_data$taxon) & gaf_data$aspect == "P", c("db_obj_id","go_id")]
+    if (nrow(gaf_data) == 0) { warning("K. lactis: GAF has no BP rows for taxon:28985"); return(list()) }
+    gaf_data$db_obj_id <- as.character(gaf_data$db_obj_id)
+    gaf_data$go_id <- trimws(gaf_data$go_id)
+    
+    #subset to mapped geneids and split
+    sub <- gaf_data[gaf_data$db_obj_id %in% input_gid, , drop = FALSE]
+    if (nrow(sub) == 0) { warning("K. lactis: no overlap between mapped GeneIDs and GAF"); return(list()) }
+    gid2go <- split(sub$go_id, sub$db_obj_id)
+    
+    #rekey to your original ids (klla0_*)
+    gid2orig <- split(input_orig, input_gid)
+    gene2GO <- vector("list", 0)
+    for (gid in names(gid2go)) {
+      gos <- unique(as.character(gid2go[[gid]]))
+      if (!is.null(gid2orig[[gid]])) {
+        for (orig in gid2orig[[gid]]) gene2GO[[orig]] <- gos
+      }
+    }
+    gene2GO <- gene2GO[lengths(gene2GO) > 0]
+    cat("Genes with GO annotations:", length(gene2GO), "\n")
+  }
+  return(gene2GO)
+}
 
 
 
+############RUN topGO FOR S. CEREVISIAE 
 
+#prepare gene universe and scores
+scer_universe <- scer_topGo$gene_id
+#check what types of gene IDs we have
+cat("Total genes:", length(scer_universe), "\n")
+cat("Sample gene IDs:", head(scer_universe, 20), "\n")
+cat("Y-genes:", sum(grepl("^Y", scer_universe)), "\n")
+cat("Q-genes:", sum(grepl("^Q", scer_universe)), "\n")
+
+#only use Y-genes that org.Sc.sgd.db recognizes
+scer_y_genes <- scer_topGo[grepl("^Y", scer_topGo$gene_id), ]
+scer_pvalues <- setNames(scer_y_genes$pvalue, scer_y_genes$gene_id)
+scer_pvalues[is.na(scer_pvalues)] <- 1
+#define selection function
+topDiffGenes <- function(allScore) {
+  return(allScore < 0.01)
+}
+
+#get gene2GO mapping for S. cerevisiae
+scer_gene2GO <- create_gene2GO_mapping("Scer", names(scer_pvalues))
+
+#debug: check if gene2GO mapping is populated
+cat("Number of genes in gene2GO:", length(scer_gene2GO), "\n")
+cat("First few gene IDs in gene2GO:", head(names(scer_gene2GO)), "\n")
+cat("First few gene IDs in scer_pvalues:", head(names(scer_pvalues)), "\n")
+cat("Sample GO terms for first gene:", head(scer_gene2GO[[1]]), "\n")
+
+#check for overlap
+cat("Genes in both:", length(intersect(names(scer_pvalues), names(scer_gene2GO))), "\n")
+
+#build topGOdata object
+GOdata_Scer <- new("topGOdata",
+                   description = "S. cerevisiae Pi starvation 60min",
+                   ontology = "BP",
+                   allGenes = scer_pvalues,
+                   geneSel = topDiffGenes,
+                   annot = annFUN.gene2GO,
+                   gene2GO = scer_gene2GO,
+                   nodeSize = 10)
+
+#run multiple algorithms
+#classic Fisher
+result_Scer_classicFisher <- runTest(GOdata_Scer, 
+                                     algorithm = "classic", 
+                                     statistic = "fisher")
+
+#classic KS
+result_Scer_classicKS <- runTest(GOdata_Scer, 
+                                 algorithm = "classic", 
+                                 statistic = "ks")
+
+#elim Fisher
+result_Scer_elimFisher <- runTest(GOdata_Scer, 
+                                  algorithm = "elim", 
+                                  statistic = "fisher")
+
+#weight01 Fisher (topGO recommended)
+result_Scer_weight01 <- runTest(GOdata_Scer, 
+                                algorithm = "weight01", 
+                                statistic = "fisher")
+
+#generate results table
+Scer_topGO_results <- GenTable(GOdata_Scer,
+                               classic = result_Scer_classicFisher,
+                               elim = result_Scer_elimFisher,
+                               weight01 = result_Scer_weight01,
+                               KS = result_Scer_classicKS,
+                               orderBy = "weight01",
+                               ranksOf = "classic",
+                               topNodes = 30)
+
+#save results
+write.csv(Scer_topGO_results, 
+         file.path(Scer_results, "Scer_topGO_complete.csv"),
+         row.names = FALSE)
+
+############VISUALIZATION 
+
+library(ggplot2)
+library(tidyr)
+
+#prepare data for plotting
+plot_data <- Scer_topGO_results %>%
+  slice_head(n = 20) %>%
+  dplyr::select(GO.ID, Term, classic, elim, weight01) %>%
+  pivot_longer(cols = c(classic, elim, weight01),
+               names_to = "Algorithm",
+               values_to = "pvalue") %>%
+  mutate(
+    pvalue = as.numeric(pvalue),
+    negLog10P = -log10(pvalue + 1e-10),
+    Term = str_trunc(Term, 40)
+  )
+
+#create comparison plot
+p_topGO_compare <- ggplot(plot_data, 
+                          aes(x = reorder(Term, negLog10P), 
+                              y = negLog10P, 
+                              fill = Algorithm)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  coord_flip() +
+  labs(title = "S. cerevisiae: topGO Algorithm Comparison",
+       x = NULL,
+       y = "-log10(p-value)") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    axis.text.y = element_text(size = 10)
+  ) +
+  geom_hline(yintercept = -log10(0.05), 
+             linetype = "dashed", 
+             color = "red", 
+             alpha = 0.5)
+
+print(p_topGO_compare)
+
+#save bar plot
+ggsave(file.path(Scer_plots, "Scer_topGO_algorithm_comparison.pdf"),
+       plot = p_topGO_compare,
+       width = 10, height = 8)
+
+#png of DAG 
+if (!ok || !file.exists(outfile_svg) || file.info(outfile_svg)$size <= 1000) {
+  # 1) high-res PNG for slides/docs (crisp on zoom)
+  outfile_png <- file.path(Scer_plots, "Scer_GO_graph_top10.png")
+  grDevices::png(outfile_png,
+                 width = 6000, height = 4500,    # big canvas
+                 res = 600,                      # high DPI
+                 type = "cairo",                 # better text/lines on Windows
+                 antialias = "subpixel")
+  op <- par(mai = c(0, 0, 0, 0))                 # use full page
+  on.exit({ try(par(op), silent = TRUE); try(grDevices::dev.off(), silent = TRUE) }, add = TRUE)
+  showSigOfNodes(
+    GOdata_Scer,
+    score(result_Scer_weight01),
+    firstSigNodes = 10,
+    useInfo = "all"
+  )
+
+  #PDF via Cairo here for better zoom
+  if (requireNamespace("Cairo", quietly = TRUE)) {
+    outfile_pdf <- file.path(Scer_plots, "Scer_GO_graph_top10.pdf")
+    Cairo::CairoPDF(outfile_pdf, width = 16, height = 12)  # larger page for legibility
+    op2 <- par(mai = c(0, 0, 0, 0))
+    try({
+      showSigOfNodes(
+        GOdata_Scer,
+        score(result_Scer_weight01),
+        firstSigNodes = 10,
+        useInfo = "all"
+      )
+    }, silent = TRUE)
+    try(par(op2), silent = TRUE)
+    try(grDevices::dev.off(), silent = TRUE)
+  }
+}
+
+# (ADDED) UNIFORM PLOTS FOR SCER
+save_algo_barplot(Scer_topGO_results, "Scer", Scer_plots)
+save_go_dag(GOdata_Scer, result_Scer_weight01, "Scer", Scer_plots)
+
+############SANITY CHECKS
+
+#check annotation coverage
+check_annotation_coverage <- function(GOdata) {
+  #get total genes from slot
+  total_genes <- length(GOdata@allGenes)
+  annotated <- numGenes(GOdata)
+  sig_genes_total <- numSigGenes(GOdata)
+  
+  #get significant genes that are annotated
+  sig_genes_list <- sigGenes(GOdata)
+  sig_annotated <- length(sig_genes_list)
+  
+  cat("Annotation Coverage:\n")
+  cat("  Total genes in universe:", total_genes, "\n")
+  cat("  Annotated genes:", annotated, 
+      sprintf("(%.1f%%)\n", 100 * annotated/total_genes))
+  cat("  Significant genes (in universe):", sig_genes_total, "\n")
+  cat("  Significant genes (annotated):", sig_annotated, "\n")
+  cat("  GO terms tested:", length(usedGO(GOdata)), "\n")
+}
+check_annotation_coverage(GOdata_Scer)
+
+#check p-value distributions
+check_pvalue_dist <- function(result_obj) {
+  pvals <- score(result_obj)
+  hist(pvals, breaks = 50, main = "P-value distribution")
+  abline(h = length(pvals)/50, col = "red", lty = 2)
+}
+
+check_pvalue_dist(result_Scer_classicFisher)
+
+#save diagnostics for scer
+save_pvalue_hist(result_Scer_classicFisher,
+                 file.path(Scer_plots, "Scer_pvalue_distribution.pdf"),
+                 "P-value distribution - S. cerevisiae")
+save_go_size_hist(GOdata_Scer,
+                  file.path(Scer_plots, "Scer_GO_term_sizes.pdf"),
+                  "GO Term Size Distribution - S. cerevisiae")
+
+#investigate p=1 GO terms
+p1_terms <- Scer_topGO_results[Scer_topGO_results$classic == "1", ]
+cat("Number of GO terms with p=1:", nrow(p1_terms), "\n")
+
+#check their characteristics
+if(nrow(p1_terms) > 0) {
+  cat("Sample terms with p=1:\n")
+  print(p1_terms[1:min(5, nrow(p1_terms)), c("GO.ID", "Term", "Annotated", "Significant", "Expected")])
+}
+
+#get distribution of GO term sizes
+all_go_sizes <- termStat(GOdata_Scer)
+hist(all_go_sizes$Annotated, breaks=50, main="GO Term Size Distribution", xlab="Number of annotated genes")
+
+#check terms with 0 significant genes
+zero_sig <- all_go_sizes[all_go_sizes$Significant == 0, ]
+cat("GO terms with 0 significant genes:", nrow(zero_sig), "\n")
+cat("Proportion of all terms:", round(100*nrow(zero_sig)/nrow(all_go_sizes), 1), "%\n")
+
+############OTHER SPECIES ANALYSIS
+
+#define annotation file paths - using consolidated GAF for Candida species
+cgd_gaf <- here::here("02.annotationdata", "go-terms", "gene_association.cgd")
+klac_gaf <- here::here("02.annotationdata", "go-terms", "GCF_000002515.2_ASM251v1_gene_ontology.gaf")
+
+############C. GLABRATA
+cat("\n========== C. glabrata topGO Analysis ==========\n")
+
+#prepare gene universe and scores
+cgla_universe <- cgla_topGo$gene_id
+cgla_pvalues <- setNames(cgla_topGo$pvalue, cgla_topGo$gene_id)
+cgla_pvalues[is.na(cgla_pvalues)] <- 1
+
+#get gene2GO mapping
+cgla_gene2GO <- create_gene2GO_mapping("Cgla", names(cgla_pvalues), cgd_gaf)
+
+#build topGOdata object
+GOdata_Cgla <- new("topGOdata",
+                   description = "C. glabrata Pi starvation 60min",
+                   ontology = "BP",
+                   allGenes = cgla_pvalues,
+                   geneSel = topDiffGenes,
+                   annot = annFUN.gene2GO,
+                   gene2GO = cgla_gene2GO,
+                   nodeSize = 10)
+
+#run algorithms
+result_Cgla_classicFisher <- runTest(GOdata_Cgla, algorithm = "classic", statistic = "fisher")
+result_Cgla_elimFisher <- runTest(GOdata_Cgla, algorithm = "elim", statistic = "fisher")
+result_Cgla_weight01 <- runTest(GOdata_Cgla, algorithm = "weight01", statistic = "fisher")
+
+#generate results table
+Cgla_topGO_results <- GenTable(GOdata_Cgla,
+                               classic = result_Cgla_classicFisher,
+                               elim = result_Cgla_elimFisher,
+                               weight01 = result_Cgla_weight01,
+                               orderBy = "weight01",
+                               ranksOf = "classic",
+                               topNodes = 30)
+
+#save results
+write.csv(Cgla_topGO_results, 
+         file.path(Cgla_results, "Cgla_topGO_complete.csv"),
+         row.names = FALSE)
+
+#check coverage
+check_annotation_coverage(GOdata_Cgla)
+
+#check p-value distributions
+check_pvalue_dist(result_Cgla_classicFisher)
+
+#save diagnostics for cgla
+save_pvalue_hist(result_Cgla_classicFisher,
+                 file.path(Cgla_plots, "Cgla_pvalue_distribution.pdf"),
+                 "P-value distribution - C. glabrata")
+save_go_size_hist(GOdata_Cgla,
+                  file.path(Cgla_plots, "Cgla_GO_term_sizes.pdf"),
+                  "GO Term Size Distribution - C. glabrata")
+
+# (ADDED) UNIFORM PLOTS FOR CGLA
+save_algo_barplot(Cgla_topGO_results, "Cgla", Cgla_plots)
+save_go_dag(GOdata_Cgla, result_Cgla_weight01, "Cgla", Cgla_plots)
+
+#investigate p=1 GO terms
+p1_terms_cgla <- Cgla_topGO_results[Cgla_topGO_results$classic == "1", ]
+cat("Number of GO terms with p=1:", nrow(p1_terms_cgla), "\n")
+
+#check their characteristics
+if(nrow(p1_terms_cgla) > 0) {
+  cat("Sample terms with p=1:\n")
+  print(p1_terms_cgla[1:min(5, nrow(p1_terms_cgla)), c("GO.ID", "Term", "Annotated", "Significant", "Expected")])
+}
+
+#get distribution of GO term sizes
+all_go_sizes_cgla <- termStat(GOdata_Cgla)
+hist(all_go_sizes_cgla$Annotated, breaks=50, main="GO Term Size Distribution - C. glabrata", xlab="Number of annotated genes")
+
+#check terms with 0 significant genes
+zero_sig_cgla <- all_go_sizes_cgla[all_go_sizes_cgla$Significant == 0, ]
+cat("GO terms with 0 significant genes:", nrow(zero_sig_cgla), "\n")
+cat("Proportion of all terms:", round(100*nrow(zero_sig_cgla)/nrow(all_go_sizes_cgla), 1), "%\n")
+
+############C. ALBICANS
+cat("\n========== C. albicans topGO Analysis ==========\n")
+
+#prepare gene universe and scores
+calb_universe <- calb_topGo$gene_id
+calb_pvalues <- setNames(calb_topGo$pvalue, calb_topGo$gene_id)
+calb_pvalues[is.na(calb_pvalues)] <- 1
+
+#get gene2GO mapping
+calb_gene2GO <- create_gene2GO_mapping("Calb", names(calb_pvalues), cgd_gaf)
+
+#build topGOdata object
+GOdata_Calb <- new("topGOdata",
+                   description = "C. albicans Pi starvation 60min",
+                   ontology = "BP",
+                   allGenes = calb_pvalues,
+                   geneSel = topDiffGenes,
+                   annot = annFUN.gene2GO,
+                   gene2GO = calb_gene2GO,
+                   nodeSize = 10)
+
+#run algorithms
+result_Calb_classicFisher <- runTest(GOdata_Calb, algorithm = "classic", statistic = "fisher")
+result_Calb_elimFisher <- runTest(GOdata_Calb, algorithm = "elim", statistic = "fisher")
+result_Calb_weight01 <- runTest(GOdata_Calb, algorithm = "weight01", statistic = "fisher")
+
+#generate results table
+Calb_topGO_results <- GenTable(GOdata_Calb,
+                               classic = result_Calb_classicFisher,
+                               elim = result_Calb_elimFisher,
+                               weight01 = result_Calb_weight01,
+                               orderBy = "weight01",
+                               ranksOf = "classic",
+                               topNodes = 30)
+
+#save results
+write.csv(Calb_topGO_results, 
+         file.path(Calb_results, "Calb_topGO_complete.csv"),
+         row.names = FALSE)
+
+#check coverage
+check_annotation_coverage(GOdata_Calb)
+
+#check p-value distributions
+check_pvalue_dist(result_Calb_classicFisher)
+
+#save diagnostics for calb
+save_pvalue_hist(result_Calb_classicFisher,
+                 file.path(Calb_plots, "Calb_pvalue_distribution.pdf"),
+                 "P-value distribution - C. albicans")
+save_go_size_hist(GOdata_Calb,
+                  file.path(Calb_plots, "Calb_GO_term_sizes.pdf"),
+                  "GO Term Size Distribution - C. albicans")
+
+# (ADDED) UNIFORM PLOTS FOR CALB
+save_algo_barplot(Calb_topGO_results, "Calb", Calb_plots)
+save_go_dag(GOdata_Calb, result_Calb_weight01, "Calb", Calb_plots)
+
+#investigate p=1 GO terms
+p1_terms_calb <- Calb_topGO_results[Calb_topGO_results$classic == "1", ]
+cat("Number of GO terms with p=1:", nrow(p1_terms_calb), "\n")
+
+#check their characteristics
+if(nrow(p1_terms_calb) > 0) {
+  cat("Sample terms with p=1:\n")
+  print(p1_terms_calb[1:min(5, nrow(p1_terms_calb)), c("GO.ID", "Term", "Annotated", "Significant", "Expected")])
+}
+
+#get distribution of GO term sizes
+all_go_sizes_calb <- termStat(GOdata_Calb)
+hist(all_go_sizes_calb$Annotated, breaks=50, main="GO Term Size Distribution - C. albicans", xlab="Number of annotated genes")
+
+#check terms with 0 significant genes
+zero_sig_calb <- all_go_sizes_calb[all_go_sizes_calb$Significant == 0, ]
+cat("GO terms with 0 significant genes:", nrow(zero_sig_calb), "\n")
+cat("Proportion of all terms:", round(100*nrow(zero_sig_calb)/nrow(all_go_sizes_calb), 1), "%\n")
+
+############K. LACTIS
+cat("\n========== K. lactis topGO Analysis ==========\n")
+
+#prepare gene universe and scores
+klac_universe <- klac_topGo$gene_id
+klac_pvalues <- setNames(klac_topGo$pvalue, klac_topGo$gene_id)
+klac_pvalues[is.na(klac_pvalues)] <- 1
+
+#get gene2GO mapping
+klac_gene2GO <- create_gene2GO_mapping("Klac", names(klac_pvalues), klac_gaf)
+
+#KDRO_C02880 is in universe (annotation patch)
+if (!"KDRO_C02880" %in% names(klac_pvalues)) {
+  klac_pvalues <- c(klac_pvalues, setNames(1, "KDRO_C02880"))
+}
+#bp term for pho84/kdro_c02880
+klac_gene2GO[["KDRO_C02880"]] <- unique(c(klac_gene2GO[["KDRO_C02880"]], "GO:0006817"))
+
+#overlap guard so topGO sees real terms
+klac_overlap <- intersect(names(klac_pvalues), names(klac_gene2GO))
+cat("K. lactis overlap (universe ∩ gene2GO):", length(klac_overlap), "\n")
+klac_pvalues_use <- klac_pvalues[klac_overlap]
+klac_gene2GO_use <- klac_gene2GO[klac_overlap]
+stopifnot(length(klac_pvalues_use) > 0, length(klac_gene2GO_use) > 0)
+
+#build topgo object
+GOdata_Klac <- new("topGOdata",
+                   description = "K. lactis Pi starvation 60min",
+                   ontology = "BP",
+                   allGenes = klac_pvalues_use,
+                   geneSel = topDiffGenes,
+                   annot = annFUN.gene2GO,
+                   gene2GO = klac_gene2GO_use,
+                   nodeSize = 10)
+
+#run algorithms
+result_Klac_classicFisher <- runTest(GOdata_Klac, algorithm = "classic", statistic = "fisher")
+result_Klac_elimFisher <- runTest(GOdata_Klac, algorithm = "elim", statistic = "fisher")
+result_Klac_weight01 <- runTest(GOdata_Klac, algorithm = "weight01", statistic = "fisher")
+
+#generate results table
+Klac_topGO_results <- GenTable(GOdata_Klac,
+                               classic = result_Klac_classicFisher,
+                               elim = result_Klac_elimFisher,
+                               weight01 = result_Klac_weight01,
+                               orderBy = "weight01",
+                               ranksOf = "classic",
+                               topNodes = 30)
+
+#save results
+write.csv(Klac_topGO_results, 
+         file.path(Klac_results, "Klac_topGO_complete.csv"),
+         row.names = FALSE)
+
+#check coverage
+check_annotation_coverage(GOdata_Klac)
+
+#check p-value distributions
+check_pvalue_dist(result_Klac_classicFisher)
+
+#save diagnostics for klac
+save_pvalue_hist(result_Klac_classicFisher,
+                 file.path(Klac_plots, "Klac_pvalue_distribution.pdf"),
+                 "P-value distribution - K. lactis")
+save_go_size_hist(GOdata_Klac,
+                  file.path(Klac_plots, "Klac_GO_term_sizes.pdf"),
+                  "GO Term Size Distribution - K. lactis")
+
+# (ADDED) UNIFORM PLOTS FOR KLAC
+save_algo_barplot(Klac_topGO_results, "Klac", Klac_plots)
+save_go_dag(GOdata_Klac, result_Klac_weight01, "Klac", Klac_plots)
+
+#investigate p=1 GO terms
+p1_terms_klac <- Klac_topGO_results[Klac_topGO_results$classic == "1", ]
+cat("Number of GO terms with p=1:", nrow(p1_terms_klac), "\n")
+
+#check their characteristics
+if(nrow(p1_terms_klac) > 0) {
+  cat("Sample terms with p=1:\n")
+  print(p1_terms_klac[1:min(5, nrow(p1_terms_klac)), c("GO.ID", "Term", "Annotated", "Significant", "Expected")])
+}
+
+#get distribution of GO term sizes
+all_go_sizes_klac <- termStat(GOdata_Klac)
+hist(all_go_sizes_klac$Annotated, breaks=50, main="GO Term Size Distribution - K. lactis", xlab="Number of annotated genes")
+
+#check terms with 0 significant genes
+zero_sig_klac <- all_go_sizes_klac[all_go_sizes_klac$Significant == 0, ]
+cat("GO terms with 0 significant genes:", nrow(zero_sig_klac), "\n")
+cat("Proportion of all terms:", round(100*nrow(zero_sig_klac)/nrow(all_go_sizes_klac), 1), "%\n")
+
+############CROSS-SPECIES COMPARISON
+cat("\n========== Cross-species topGO Comparison ==========\n")
+
+#compile all results
+all_species_results <- list(
+  Scer = Scer_topGO_results,
+  Cgla = Cgla_topGO_results,
+  Calb = Calb_topGO_results,
+  Klac = Klac_topGO_results
+)
+
+#extract significant terms from each species
+significant_terms <- lapply(names(all_species_results), function(sp) {
+  df <- all_species_results[[sp]]
+  df$Species <- sp
+  df[as.numeric(df$weight01) < 0.05, c("GO.ID", "Term", "Species", "weight01")]
+})
+
+#combine and create comparison matrix
+combined_terms <- dplyr::bind_rows(significant_terms)
+term_matrix <- combined_terms %>%
+  dplyr::select(GO.ID, Term, Species) %>%
+  dplyr::mutate(present = 1) %>%
+  tidyr::pivot_wider(names_from = Species, 
+              values_from = present, 
+              values_fill = 0)
+
+#save comparison
+write.csv(term_matrix, 
+         file.path(here::here("06.results"), "Cross_species_GO_comparison.csv"),
+         row.names = FALSE)
+
+#print summary
+cat("\nShared GO terms across species:\n")
+shared_all <- term_matrix[rowSums(term_matrix[,3:6]) == 4, ]
+cat("Shared by all 4 species:", nrow(shared_all), "\n")
+if(nrow(shared_all) > 0) {
+  print(head(shared_all$Term))
+}
 ```
 
 

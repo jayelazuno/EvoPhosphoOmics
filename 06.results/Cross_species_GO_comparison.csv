@@ -1,0 +1,89 @@
+"GO.ID","Term","NA","Scer","Cgla","Calb","Klac"
+NA,NA,1,0,0,0,0
+"GO:0000054","ribosomal subunit export from nucleus",0,1,0,0,1
+"GO:0000028","ribosomal small subunit assembly",0,1,0,0,0
+"GO:0006412","translation",0,1,1,1,0
+"GO:0000462","maturation of SSU-rRNA from tricistronic...",0,1,1,1,1
+"GO:0000463","maturation of LSU-rRNA from tricistronic...",0,1,1,1,1
+"GO:0000027","ribosomal large subunit assembly",0,1,1,1,0
+"GO:0006418","tRNA aminoacylation for protein translat...",0,1,1,0,0
+"GO:0010499","proteasomal ubiquitin-independent protei...",0,1,0,0,0
+"GO:0006457","protein folding",0,1,0,1,0
+"GO:0006414","translational elongation",0,1,0,0,0
+"GO:0006096","glycolytic process",0,1,0,0,1
+"GO:0034599","cellular response to oxidative stress",0,1,0,0,0
+"GO:0001731","formation of translation preinitiation c...",0,1,0,0,0
+"GO:0000466","maturation of 5.8S rRNA from tricistroni...",0,1,1,1,1
+"GO:0006633","fatty acid biosynthetic process",0,1,0,0,0
+"GO:0006415","translational termination",0,1,0,0,0
+"GO:0043248","proteasome assembly",0,1,0,0,0
+"GO:0170035","L-amino acid catabolic process",0,1,0,0,0
+"GO:0043650","dicarboxylic acid biosynthetic process",0,1,0,0,0
+"GO:0042026","protein refolding",0,1,0,0,1
+"GO:0000447","endonucleolytic cleavage in ITS1 to sepa...",0,1,1,1,0
+"GO:0000470","maturation of LSU-rRNA",0,1,0,0,1
+"GO:0009079","pyruvate family amino acid biosynthetic ...",0,1,0,0,0
+"GO:1990145","maintenance of translational fidelity",0,1,0,0,0
+"GO:0051085","chaperone cofactor-dependent protein ref...",0,1,0,0,0
+"GO:0170040","proteinogenic amino acid catabolic proce...",0,1,0,0,0
+"GO:0006098","pentose-phosphate shunt",0,1,0,0,0
+"GO:0043161","proteasome-mediated ubiquitin-dependent ...",0,1,0,0,0
+"GO:0009408","response to heat",0,1,0,0,0
+"GO:0006364","rRNA processing",0,0,1,1,1
+"GO:0043604","amide biosynthetic process",0,0,1,0,0
+"GO:0000422","autophagy of mitochondrion",0,0,1,0,0
+"GO:0009267","cellular response to starvation",0,0,1,0,0
+"GO:0000472","endonucleolytic cleavage to generate mat...",0,0,1,1,0
+"GO:0005978","glycogen biosynthetic process",0,0,1,0,0
+"GO:0000480","endonucleolytic cleavage in 5'-ETS of tr...",0,0,1,1,0
+"GO:0006897","endocytosis",0,0,1,0,0
+"GO:0015031","protein transport",0,0,1,0,0
+"GO:0072330","monocarboxylic acid biosynthetic process",0,0,1,0,0
+"GO:0042273","ribosomal large subunit biogenesis",0,0,1,1,0
+"GO:0044272","sulfur compound biosynthetic process",0,0,1,0,0
+"GO:0030490","maturation of SSU-rRNA",0,0,1,0,1
+"GO:0000467","exonucleolytic trimming to generate matu...",0,0,1,1,0
+"GO:0006267","pre-replicative complex assembly involve...",0,0,1,0,0
+"GO:0006576","biogenic amine metabolic process",0,0,1,0,0
+"GO:0006607","NLS-bearing protein import into nucleus",0,0,1,0,0
+"GO:0015986","proton motive force-driven ATP synthesis",0,0,1,0,1
+"GO:1902905","positive regulation of supramolecular fi...",0,0,1,0,0
+"GO:0006826","iron ion transport",0,0,1,0,0
+"GO:0044248","cellular catabolic process",0,0,1,0,0
+"GO:0044396","actin cortical patch organization",0,0,1,0,0
+"GO:0071035","nuclear polyadenylation-dependent rRNA c...",0,0,1,1,0
+"GO:0002181","cytoplasmic translation",0,0,0,1,0
+"GO:0170034","L-amino acid biosynthetic process",0,0,0,1,0
+"GO:0170038","proteinogenic amino acid biosynthetic pr...",0,0,0,1,0
+"GO:0009073","aromatic amino acid family biosynthetic ...",0,0,0,1,0
+"GO:0042797","tRNA transcription by RNA polymerase III",0,0,0,1,0
+"GO:0006744","ubiquinone biosynthetic process",0,0,0,1,0
+"GO:0030150","protein import into mitochondrial matrix",0,0,0,1,0
+"GO:0008033","tRNA processing",0,0,0,1,0
+"GO:0042255","ribosome assembly",0,0,0,1,0
+"GO:0009070","serine family amino acid biosynthetic pr...",0,0,0,1,0
+"GO:0071038","TRAMP-dependent tRNA surveillance pathwa...",0,0,0,1,0
+"GO:0097250","mitochondrial respirasome assembly",0,0,0,1,0
+"GO:0002098","tRNA wobble uridine modification",0,0,0,1,1
+"GO:0031167","rRNA methylation",0,0,0,1,1
+"GO:0009152","purine ribonucleotide biosynthetic proce...",0,0,0,1,0
+"GO:0016579","protein deubiquitination",0,0,0,1,0
+"GO:0170041","non-proteinogenic amino acid metabolic p...",0,0,0,1,0
+"GO:0044283","small molecule biosynthetic process",0,0,0,0,1
+"GO:0016180","snRNA processing",0,0,0,0,1
+"GO:0006696","ergosterol biosynthetic process",0,0,0,0,1
+"GO:0030488","tRNA methylation",0,0,0,0,1
+"GO:0000479","endonucleolytic cleavage of tricistronic...",0,0,0,0,1
+"GO:0006006","glucose metabolic process",0,0,0,0,1
+"GO:0006099","tricarboxylic acid cycle",0,0,0,0,1
+"GO:0031123","RNA 3'-end processing",0,0,0,0,1
+"GO:0009311","oligosaccharide metabolic process",0,0,0,0,1
+"GO:0016051","carbohydrate biosynthetic process",0,0,0,0,1
+"GO:0019752","carboxylic acid metabolic process",0,0,0,0,1
+"GO:0006081","cellular aldehyde metabolic process",0,0,0,0,1
+"GO:0000460","maturation of 5.8S rRNA",0,0,0,0,1
+"GO:0006400","tRNA modification",0,0,0,0,1
+"GO:0015698","inorganic anion transport",0,0,0,0,1
+"GO:0043094","cellular metabolic compound salvage",0,0,0,0,1
+"GO:0006511","ubiquitin-dependent protein catabolic pr...",0,0,0,0,1
+"GO:0015718","monocarboxylic acid transport",0,0,0,0,1
