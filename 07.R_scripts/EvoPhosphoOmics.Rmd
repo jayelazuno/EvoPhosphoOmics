@@ -937,217 +937,53 @@ ggsave(filename = file.path(Klac_plots, "KlPHO84 Expression t0000_vs_t0060.pdf")
 ```
 
 
+Goal (functional enrichment with topGO)
+
+Identify Biological Process (BP) Gene Ontology terms enriched among DESeq2-tested genes for each species (Scer, Cgla, Calb, Klac), using a consistent pipeline so results are comparable across species and suitable for cross-species summaries.
+
+What this chunk does
+
+Set up: load packages, create per-species plot/output folders, and define small helper functions to save QC plots (p-value histograms, GO term size histograms), barplots comparing topGO algorithms, and GO DAG snapshots.
+
+Gene→GO mappings:
+Scer: pull GO annotations from org.Sc.sgd.db (GOALL), merge with GO.db to keep BP only, convert to gene2GO.
+Cgla: parse CGD GAF; map CAGL0/GWK60 → QNG via your three-way mapping; keep BP terms; build gene2GO.
+Calb: parse CGD GAF; map A21/A22 IDs → orf19; keep BP; build gene2GO.
+Klac: parse NCBI GAF; map locus_tag → NCBI GeneID; keep BP; build gene2GO (with a small PHO84/KDRO_C02880 patch so it’s included).
+
+Universe & scores: for each species, take the full DESeq table (*_topGo.csv), set gene-level scores to the DESeq p-value (NAs → 1), and define the selection function p < 0.01.
+Run topGO per species: build topGOdata (BP, nodeSize=10), run multiple algorithms (classic, elim, weight01, plus KS for Scer), generate a ranked results table, and write it to disk.
+QC & visualization: save p-value and GO size histograms, an algorithm comparison barplot (−log10 p across classic/elim/weight01), and a GO DAG image of the top nodes.
+Sanity checks: print annotation coverage (how many genes in the universe are annotated), counts of p=1 terms, distribution of term sizes, and proportion of terms with zero significant genes.
+Cross-species summary: combine significant terms (weight01 < 0.05) across species into a presence/absence matrix and save for downstream comparison.
+
+Key parameters & assumptions
+Ontology: BP only (can switch to MF/CC with the same framework).
+Selection threshold: p < 0.01 for geneSel.
+Term size filter: nodeSize = 10.
+Input IDs: harmonized per species (Scer ORFs, Cgla QNG, Calb orf19, Klac GeneID/XP) to ensure gene2GO and DESeq universes align.
+Outputs: per-species CSV of topGO results, diagnostic PDFs/PNGs, and a cross-species GO comparison CSV.
+
+Why this structure?
+Using the complete DESeq universe (not just significant genes) avoids selection bias, topGO’s elim/weight01 reduce GO hierarchy dependencies, and the standardized plotting/QC makes differences across species interpretable and reproducible.
+
 ```{r functional-analysis-GO-Term-Enrichment}
-####### Extract gene lists for both upregulated and down regulated genes 
-Scer_genes <- gsub("^gene-", "", rownames(resSigsc)) # S. cerevisiae
-writeLines(Scer_genes, file.path(Scer_results, "20250727Scer_sig_genes_GO.txt"))
-
-#################### # Convert the vector to a data frame with a column name
-Scer_genesID <- tibble(Scer_geneID = Scer_genes)
-write_csv(Scer_genesID, file.path(Scer_results, "20250727Scer_sig_genes_og.csv"))
-
-Scer_go<- enrichGO(
-  gene          = Scer_genes,
-  OrgDb         = org.Sc.sgd.db,
-  keyType       = "ORF",  # ORF = YPL240C, etc.
-  ont           = "BP",
-  pAdjustMethod = "BH",
-  qvalueCutoff  = 0.05,
-  readable      = FALSE   #  prevent SYMBOL conversion
-)
-
-# Convert and remove rows with missing values in relevant columns
-Scer_GO <- as.data.frame(Scer_go)  
-Scer_GO <- Scer_GO[!is.na(Scer_GO$Description) & !is.na(Scer_GO$p.adjust) & !is.na(Scer_GO$Count), ]
-Scer_GO[order(Scer_GO$Count, decreasing = TRUE), ][1:20, ]
-Scer_GO$Description <- factor(Scer_go$Description, levels = Scer_GO$Description[order(Scer_GO$Count)])
-
-ScGoPlot <- ggplot(Scer_GO, aes(x = Description, y = Count, fill = p.adjust)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  scale_fill_gradient(low = "red", high = "blue", name = "FDR") +
-  labs(title = "Top GO Terms - S. cerevisiae",
-       x = NULL, y = "Gene Count") +
-  theme_minimal(base_size = 14) +
-  theme(
-    axis.text.y = element_text(size = 12, face = "bold"),
-    axis.text.x = element_text(size = 12, face = "bold"),
-    plot.title = element_text(face = "bold", size = 16, hjust = 0.5)
-  )
-
-ScGoPlot
-
-ggsave(filename = file.path(Scer_plots, "ScGo Term t0000_vs_t0060.pdf"),
-       plot = ScGoPlot, width = 8, height = 6)
-############################
-
-########################## using GO term from unipro
-Scer_go_map <- read_tsv(here("results", "Scer", "Scer_idmapping_2025_07_30.tsv"))
-# Preview the data
-#glimpse(Klac_go_map)
-
-# Subset only non-NA GO Biological Process terms
-Scer_go_bp <- Scer_go_map %>%
-  filter(!is.na(`Gene Ontology (biological process)`)) %>%
-  select(`Gene Names`, `Gene Ontology (biological process)`)
-
-# Separate multiple GO terms per row
-Scer_go_bp <- Scer_go_bp %>%
-  separate_rows(`Gene Ontology (biological process)`, sep = ";\\s*")
-
-# Clean whitespace and extract just the GO term name
-Scer_go_bp <- Scer_go_bp%>%
-  mutate(`GO Term` = str_remove(`Gene Ontology (biological process)`, "\\s*\\[GO:\\d+\\]")) %>%
-  count(`GO Term`, name = "Gene Count") %>%
-  arrange(desc(`Gene Count`))
-
-# Optional: Limit to top N GO terms
-Scer_go_bp <- Scer_go_bp %>% slice_max(`Gene Count`, n = 20)
-
-# Plot
-ScerUniprotGoPlot <- ggplot(Scer_go_bp, aes(x = reorder(`GO Term`, `Gene Count`), y = `Gene Count`)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  coord_flip() +
-  labs(title = "Top uniprot GO Biological Process Terms - S.cerevisaie",
-       x = NULL, y = "Gene Count") +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.y = element_text(size = 12, face = "bold"))
-
-ScerUniprotGoPlot
-ggsave(filename = file.path(Scer_plots, "Scer Uniproit Go Term t0000_vs_t0060.pdf"),
-       plot = ScerUniprotGoPlot, width = 14, height = 6)
-
-################## revert to standard BG2 IDs to match orthogroup file for each mapping 
-Cgla_genes <- rownames(resSigcg) 
-Cgla_genesBG2 <- gsub("^gene-", "", Cgla_genes)
-Cgla_genesID <- tibble(gwk60_id = Cgla_genesBG2)
-write_csv(Cgla_genesID, file.path(Cgla_results, "20250727Cgla_sig_genes_og.csv"))
-
-################ Converted BG2 IDs to CBS138 for GO term enrichment analysis in CGD
-#Cgla_genes <- gsub("^gene-GWK60_", "CAGL0", Cgla_genes)
-#Cgla_genes <- paste0(Cgla_genes, "g")
-#writeLines(Cgla_genes, file.path(Cgla_results, "20250727Cgla_sig_genes_GO.txt"))
-
-
-##################
-Cgla_goslim <- read_tsv(here("results", "Cgla", "goTermMapperResult.15368.tsv", show_col_types = FALSE))
-Cgla_goslim <- Cgla_goslim %>%
-  mutate(
-    Count = as.numeric(str_extract(Frequency, "^\\d+")),             # Extract numerator
-    Total = as.numeric(str_extract(Frequency, "(?<=out of )\\d+")),  # Extract denominator
-    Percent = round(Count / Total * 100, 1)                          # Compute %
-  ) %>%
-  arrange(desc(Percent))
-Cgla_goslim$`GO term` <- factor(Cgla_goslim$`GO term`, levels = Cgla_goslim$`GO term`)
-
-CgGoPlot <- ggplot(Cgla_goslim[1:20, ], aes(x = `GO term`, y = Count)) +
-  geom_bar(stat = "identity", fill = "#1f78b4") +
-  coord_flip() +
-  labs(title = "Top GO Slim Terms - C. glabrata",
-       x = NULL, y = "Gene Count") +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.text.y = element_text(size = 12, face = "bold"),
-    axis.title.x = element_text(face = "bold")
-  )
-CgGoPlot
-ggsave(filename = file.path(Cgla_plots, "Cg Go Term t0000_vs_t0060.pdf"),
-       plot = CgGoPlot, width = 8, height = 6)
-
-############### C. albicans
-Calb_genes <- rownames(resSigcalb) 
-writeLines(Calb_genes, file.path(Calb_results, "20250727Calb_sig_genes_GO.txt"))
-################# for orthogroup assignment 
-Calb_genesID <- tibble(Calb_geneID = Calb_genes)
-write_csv(Calb_genesID, file.path(Calb_results, "20250727Calb_sig_genes_og.csv"))
-
-##############
-Calb_goslim <- read_tsv("~/Desktop/EvoPhosphoOmics/results/Calb/goTermMapperResult.21601.xls")
-Calb_goslim <- Calb_goslim %>%
-  mutate(
-    Count = as.numeric(str_extract(Frequency, "^\\d+")),             # Extract numerator
-    Total = as.numeric(str_extract(Frequency, "(?<=out of )\\d+")),  # Extract denominator
-    Percent = round(Count / Total * 100, 1)                          # Compute %
-  ) %>%
-  arrange(desc(Percent))
-Calb_goslim$`GO term` <- factor(Calb_goslim$`GO term`, levels = Calb_goslim$`GO term`)
-
-CaGoPlot <- ggplot(Calb_goslim[1:20, ], aes(x = `GO term`, y = Count)) +
-  geom_bar(stat = "identity", fill = "#1f78b4") +
-  coord_flip() +
-  labs(title = "Top GO Slim Terms - C. albicans",
-       x = NULL, y = "Gene Count") +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    axis.text.y = element_text(size = 12, face = "bold"),
-    axis.title.x = element_text(face = "bold")
-  )
-CaGoPlot
-ggsave(filename = file.path(Calb_plots, "Ca Go Term t0000_vs_t0060.pdf"),
-       plot = CaGoPlot, width = 14, height = 6)
-
-###########################################
-Klac_genes <- rownames(resSigklac)   # K. lactis
-Klac_genes <- gsub("^gene-", "", Klac_genes)
-########################
-################# for orthogroup assignment 
-Klac_genesID <- tibble(locus_tag = Klac_genes)
-write_csv(Klac_genesID, file.path(Klac_results, "20250727Klac_sig_genes_og.csv"))
-
-# Subset only standard K. lactis gene IDs (starting with 'KLLA0_')
-Klac_genes <- Klac_genes[grepl("^KLLA0_", Klac_genes)]
-output_file <- file.path(Klac_results, "20250731-Klac_genes_patchedIDs.txt")
-writeLines(Klac_genes, con = output_file)
-############ perform GO term analysis for Kl in Uniprot and read data into R 
-
-Klac_go_map <- read_tsv(here("results", "Klac", "Klac_idmapping_2025_07_28.tsv", show_col_types = FALSE))
-# Preview the data
-#glimpse(Klac_go_map)
-
-# Subset only non-NA GO Biological Process terms
-klac_go_bp <- Klac_go_map %>%
-  filter(!is.na(`Gene Ontology (biological process)`)) %>%
-  select(`Gene Names`, `Gene Ontology (biological process)`)
-
-# Separate multiple GO terms per row
-klac_go_bp <- klac_go_bp %>%
-  separate_rows(`Gene Ontology (biological process)`, sep = ";\\s*")
-
-# Clean whitespace and extract just the GO term name
-klac_go_bp <- klac_go_bp%>%
-  mutate(`GO Term` = str_remove(`Gene Ontology (biological process)`, "\\s*\\[GO:\\d+\\]")) %>%
-  count(`GO Term`, name = "Gene Count") %>%
-  arrange(desc(`Gene Count`))
-
-# Optional: Limit to top N GO terms
-klac_go_bp <- klac_go_bp %>% slice_max(`Gene Count`, n = 20)
-
-# Plot
-KlacGoPlot <- ggplot(klac_go_bp, aes(x = reorder(`GO Term`, `Gene Count`), y = `Gene Count`)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  coord_flip() +
-  labs(title = "Top GO Biological Process Terms - K. lactis",
-       x = NULL, y = "Gene Count") +
-  theme_minimal(base_size = 14) +
-  theme(axis.text.y = element_text(size = 12, face = "bold"))
-
-KlacGoPlot
-ggsave(filename = file.path(Klac_plots, "Kl Go Term t0000_vs_t0060.pdf"),
-       plot = KlacGoPlot, width = 14, height = 6)
 
 ############ functional analysis with topGo 
-library(topGO)
-library(biomaRt)
-library(org.Sc.sgd.db)
-library(GO.db)
+# library(topGO)
+# library(biomaRt)
+# library(org.Sc.sgd.db)
+# library(GO.db)
+# library(ggplot2)
+# library(tidyr)
+# library(stringr)
+
 
 #plot dirs
-Scer_plots <- here::here("08.plots","Scer"); dir.create(Scer_plots, recursive = TRUE, showWarnings = FALSE)
-Cgla_plots <- here::here("08.plots","Cgla"); dir.create(Cgla_plots, recursive = TRUE, showWarnings = FALSE)
-Calb_plots <- here::here("08.plots","Calb"); dir.create(Calb_plots, recursive = TRUE, showWarnings = FALSE)
-Klac_plots <- here::here("08.plots","Klac"); dir.create(Klac_plots, recursive = TRUE, showWarnings = FALSE)
+# Scer_plots <- here::here("08.plots","Scer"); dir.create(Scer_plots, recursive = TRUE, showWarnings = FALSE)
+# Cgla_plots <- here::here("08.plots","Cgla"); dir.create(Cgla_plots, recursive = TRUE, showWarnings = FALSE)
+# Calb_plots <- here::here("08.plots","Calb"); dir.create(Calb_plots, recursive = TRUE, showWarnings = FALSE)
+# Klac_plots <- here::here("08.plots","Klac"); dir.create(Klac_plots, recursive = TRUE, showWarnings = FALSE)
 
 #helpers to save diagnostics
 save_pvalue_hist <- function(result_obj, outfile, title = "P-value distribution") {
@@ -1165,10 +1001,6 @@ save_go_size_hist <- function(GOdata, outfile, title) {
 }
 
 ############ PREPARE UNIFORM PLOTTING HELPERS 
-library(ggplot2)
-library(tidyr)
-library(stringr)
-
 #helpers for uniform plots across species
 save_algo_barplot <- function(res_tbl, species, outdir) {
   pd <- res_tbl %>%
@@ -2268,8 +2100,61 @@ pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species))
 
 plot_degs_og ##
 pct_tbl_og
+```
 
-################################## get the full gene list from the ref folder and create data frame with gene_id and gene_name. Set difference from this and the orthogroup data set to kn ow which genes are not in the orthogroup data set 
+Goal
+
+Build a per-species index of all genes from the reference GTFs, then check which of those genes are represented in our Orthofinder orthogroups table. This tells us which reference genes are covered by orthogroups and which are missing/unmapped
+What this chunk does (snapshot)
+
+1) Parse the reference GTF into a gene list (gene_id, gene_name).
+Reads each species’ GTF.
+Extracts attributes from the attribute column (e.g., gene_id, gene_name, ID, Name).
+Keeps one row per gene; for Scer drops the gene- prefix so IDs match the rest of the pipeline.
+Outputs a tidy data frame of all genes in the reference.
+
+2) Explode per-species orthogroup membership.
+Starts from orthogroups_cleaned.
+For each species, splits the *_orthgrp_list (semicolon-separated) into one row per gene and keeps its OG.
+This yields a per-gene ↔ OG lookup (e.g., scer_gene_id/qng_id/orf19.*/XP_... → OG).
+
+3) Join GTF gene list to the OG map to flag coverage.
+Left-join the GTF gene table to the OG map on the appropriate ID type per species (see below).
+Adds in_orthogroup = TRUE/FALSE.
+Writes (a) the joined status table and (b) a list of genes present in the reference but not in any OG.
+Species-specific notes (ID normalization & joins)
+S. cerevisiae (Scer)
+GTF IDs: SGD ORFs (Y...). Removes gene- prefix if present.
+OG join key: scer_gene_id extracted from Scer_orthgrp_list.
+
+Outputs:
+06.results/Scer/20250911_scer_missing_from_og.csv (genes not in any OG)
+
+C. glabrata (Cgla)
+GTF IDs: BG2 locus IDs (e.g., GWK60_*) or CAGL0*.
+Maps GTF gene IDs → QNG using your Cgla_BG2Protmapping (three-way map).
+OG join key: qng_id from Cgla_orthgrp_list.
+Outputs:
+06.results/Cgla/20250911_Cgla_missing_from_og.csv (unmapped to OG)
+
+C. albicans (Calb)
+GTF IDs: Normalized to lower-case; prefers orf19.* where possible.
+OG join key: lower-case orf19.* from Calb_orthgrp_list.
+Filters the “missing” table to entries that look like orf19.xxxx to avoid non-coding/misc entries.
+
+Outputs:
+06.results/Calb/20250911_Calb_missing_from_og.csv
+
+K. lactis (Klac)
+GTF IDs: locus tags/gene IDs; protein accessions may appear in protein_id/Dbxref.
+Extracts XP_... accessions and uses those as the canonical join key.
+OG join key: xp_id from Klac_orthgrp_list.
+Full coverage table and a filtered “protein-coding only (has XP_) but missing from OG” list.
+
+```{r missing-genes-from-OG-Assignment, warning=FALSE, message=FALSE}
+################################## get the full gene list from the ref folder 
+#and create data frame with gene_id and gene_name. 
+#Set difference from this and the orthogroup data set to kn ow which genes are not in the orthogroup data set 
 
 scer_gtf <- here("04.refs", "s288cSc-R64.gtf") 
 gtf <- fread(
@@ -2298,6 +2183,7 @@ scer_gene_list <- gtf %>%
   )
 
 write_csv(scer_gene_og_status, file.path(Scer_results, "20250910_Scer_gene_list.csv"))
+
 ############### list all genes in the orthgrp in Scer 
 scer_og_map <- orthogroups_cleaned %>%
   select(OG, S_cerevisiae, Scer_orthgrp_list) %>%
@@ -2348,6 +2234,165 @@ cgla_gene_list_raw <- gtf_cg %>%
   distinct(gene_id, gene_name) %>%
   mutate(gene_id = sub("^gene-", "", gene_id)) 
 
+############ Map GTF gene IDs to QNG using your mapping table
+cgla_map_keys <- Cgla_BG2Protmapping %>%
+  select(gene_id, cagl_id, qng_id, gene_name_map = gene_name) %>%
+  distinct()
+
+cgla_gene_list_qng <- cgla_gene_list_raw %>%
+  left_join(cgla_map_keys, by = c("gene_id" = "gene_id"))
+
+## Explode orthogroup QNG lists -> per-gene OG map
+cgla_og_map <- orthogroups_cleaned %>%
+  select(OG, C_glabrata, Cgla_orthgrp_list) %>%
+  mutate(Cgla_orthgrp_list = na_if(Cgla_orthgrp_list, "")) %>%
+  separate_rows(Cgla_orthgrp_list, sep = ";", convert = FALSE) %>%
+  transmute(
+    OG,
+    qng_id = trimws(Cgla_orthgrp_list)
+  ) %>%
+  filter(!is.na(qng_id), qng_id != "") %>%
+  distinct()
+
+## Coverage: join GTF→QNG to OG map
+cgla_gene_og_status <- cgla_gene_list_qng %>%
+  left_join(cgla_og_map, by = "qng_id") %>%
+  mutate(in_orthogroup = !is.na(OG)) %>%
+  select(OG, gene_id, qng_id, cagl_id, in_orthogroup)
+
+### Diagnostics
+cgla_missing_from_og <- cgla_gene_og_status %>% filter(is.na(OG) | !in_orthogroup)
+write_csv(cgla_missing_from_og, file.path(Cgla_results, "20250911_Cgla_missing_from_og.csv"))
+
+########## C.albicans 
+
+calb_gtf <- here("04.refs", "SC5314Ca.gtf")
+
+
+get_attr <- function(x, key){
+  m <- stringr::str_match(x, paste0(key, " \"([^\"]+)\""))
+  m[,2]
+}
+
+# 1) Parse GTF -> Calb gene table (prefer orf19.* IDs)
+gtf_ca <- fread(
+  calb_gtf, sep = "\t", header = FALSE, data.table = FALSE,
+  col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
+  quote = "" #comment.char = "#"
+)
+
+calb_gene_list <- gtf_ca %>%
+  transmute(
+    feature,
+    # Try common keys; fall back to Name if needed
+    raw_id    = coalesce(get_attr(attribute, "gene_id"),
+                         get_attr(attribute, "ID"),
+                         get_attr(attribute, "locus_tag"),
+                         get_attr(attribute, "Name")),
+    gene_name = coalesce(get_attr(attribute, "gene_name"),
+                         get_attr(attribute, "Name"))
+  ) %>%
+  filter(!is.na(raw_id)) %>%
+  { if (any(.$feature == "gene")) filter(., feature == "gene") else . } %>%
+  transmute(
+    gene_id   = tolower(sub("^gene-", "", raw_id)),  # normalize: drop "gene-" and lowercase
+    gene_name = gene_name
+  ) %>%
+  distinct(gene_id, gene_name)
+
+# 2) Explode orthogroup Calb list -> per-gene OG map (expects orf19.*)
+calb_og_map <- orthogroups_cleaned %>%
+  select(OG, C_albicans, Calb_orthgrp_list) %>%
+  mutate(Calb_orthgrp_list = na_if(Calb_orthgrp_list, "")) %>%
+  separate_rows(Calb_orthgrp_list, sep = ";", convert = FALSE) %>%
+  transmute(
+    OG,
+    calb_gene_id = tolower(trimws(Calb_orthgrp_list))
+  ) %>%
+  filter(!is.na(calb_gene_id), calb_gene_id != "") %>%
+  distinct()
+
+# 3) Coverage: join GTF genes to OG map
+calb_gene_og_status <- calb_gene_list %>%
+  left_join(calb_og_map, by = c("gene_id" = "calb_gene_id")) %>%
+  mutate(in_orthogroup = !is.na(OG))
+
+# 4) Diagnostics
+calb_orf_pat <- regex("^orf\\d+\\.\\d+$", ignore_case = TRUE)
+calb_missing_from_og <- calb_gene_og_status %>%
+  dplyr::filter(!in_orthogroup) %>%
+  dplyr::filter(str_detect(gene_id, calb_orf_pat))
+###########
+write_csv(calb_missing_from_og, file.path(Calb_results, "20250911_Calb_missing_from_og.csv"))
+
+
+############ K. lactis 
+
+klac_gtf <- here("04.refs", "CBS2105_kl.gtf")  
+
+# Helper to pull attributes from GTF 'attribute' column
+get_attr <- function(x, key){
+  m <- stringr::str_match(x, paste0(key, " \"([^\"]+)\""))
+  m[,2]
+}
+
+xp_pat <- "XP_\\d+(?:\\.\\d+)?"
+
+# 1) Parse GTF -> Klac gene table (map gene_id -> XP_ protein if available)
+gtf_kl <- fread(
+  klac_gtf, sep = "\t", header = FALSE, data.table = FALSE,
+  col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
+  quote = "" #, comment.char = "#"
+)
+
+klac_gene_list <- gtf_kl %>%
+  transmute(
+    feature,
+    gene_id    = coalesce(get_attr(attribute, "gene_id"),
+                          get_attr(attribute, "ID"),
+                          get_attr(attribute, "locus_tag"),
+                          get_attr(attribute, "Name")),
+    gene_name  = coalesce(get_attr(attribute, "gene_name"),
+                          get_attr(attribute, "Name")),
+    # XP_ may appear in protein_id or Dbxref fields; fall back to "any XP_ in attribute"
+    xp_from_protein = get_attr(attribute, "protein_id"),
+    xp_from_dbxref  = {
+      m <- str_extract(attribute, xp_pat); m
+    }
+  ) %>%
+  filter(!is.na(gene_id)) %>%
+  { if (any(.$feature == "gene")) filter(., feature == "gene") else . } %>%
+  mutate(
+    gene_id = sub("^gene-", "", gene_id),
+    xp_id   = coalesce(xp_from_protein, xp_from_dbxref)
+  ) %>%
+  distinct(gene_id, gene_name, xp_id)
+
+# 2) Explode orthogroup Klac list (XP_) -> per-gene OG map
+klac_og_map <- orthogroups_cleaned %>%
+  select(OG, K_lactis, Klac_orthgrp_list) %>%
+  mutate(Klac_orthgrp_list = na_if(Klac_orthgrp_list, "")) %>%
+  separate_rows(Klac_orthgrp_list, sep = ";", convert = FALSE) %>%
+  transmute(
+    OG,
+    xp_id = trimws(Klac_orthgrp_list)
+  ) %>%
+  filter(!is.na(xp_id), xp_id != "") %>%
+  distinct()
+
+# 3) Coverage: join GTF genes to OG map via XP_
+klac_gene_og_status <- klac_gene_list %>%
+  left_join(klac_og_map, by = "xp_id") %>%
+  mutate(in_orthogroup = !is.na(OG))
+
+# 4) Diagnostics
+# (a) All genes missing from OG (includes non-protein-coding if they lack XP_)
+klac_missing_from_og <- klac_gene_og_status %>%
+  filter(!in_orthogroup)
+
+# (b) Protein-coding only (must have XP_) and still missing from OG
+klac_missing_from_og_xpOnly <- klac_gene_og_status %>%
+  filter(!in_orthogroup, !is.na(xp_id))
 
 
 
