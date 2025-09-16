@@ -1800,18 +1800,58 @@ if(nrow(shared_all) > 0) {
 }
 ```
 
+Goal
+Classify each species’ genes into core classes (single-core, multi-core, non-core) from Orthofinder orthogroups, quantify their genome-wide distribution, and then quantify and plot how differentially expressed genes (DEGs) are distributed across those classes. “Unmapped” genes (not captured in any orthogroup list) are derived from the true genome totals you provided.
+
+# Three classes per species (based on copy number + presence across the compared species):
+core status classification:
+1. Non-core genes: ortholog in focal species not detected in at least one of the other species (not shared with ). 
+2. Core genes: genes shared by all species 
+ (i) Single-core: a single-copy gene in the focal species with orthologs in the other species being compared. 
+ (ii) Multi-core: at least 2 copies in the focal species 
+ 
+Inputs
+• orthogroups data frame out from orthofinder curated using the four species proteome as input 
+• genome_totals: tatal number of genes in each species Scer=6477, Cgla=5481, Calb=6468, Klac=5360
+• DEG CSVs per species (differentially expressed genes matrix: 20250826*.LFCgt2.padj0.01.csv
+– Cgla: qng_gwk_cagl_threeway_map_complete.csv (BG2 or CAGL0 to QNG) (mapping file for Cg)
+– Klac: xp_to_klla0_mapping.csv (locus_tag to XP_) mapping file for Klac
+
+What this block does
+Parse per-species gene IDs in the orthogroup table using regex into list-columns, count copies per OG (n_orthgrp_*) and collapse readable *_orthgrp_list.
+Assign core status per species using copy counts across species:
+– non-core: any other species has 0 copies in the OG
+– multi-core: all species present greater than 0 and focal species has 2 or more copies
+– single-core: all species present greater than 0 and focal species has exactly 1 copy
+– NA: focal species absent; later labeled unmapped in plots and tables
+
+Keep a slim table orthogroups_cleaned containing OG, orthgrp_list, n_orthgrp, *_core_status; write to disk.
+Build genome reference counts (counts) by summing copy counts per class and species; add unmapped as genome_total minus mapped_total.
+Plot genome reference distributions: raw counts (p_counts_ref) and percent within species (p_pct_ref).
+Build per-gene maps scer_map, cgla_map, calb_map, klac_map by exploding *_orthgrp_list to one row per gene with OG and core status.
+
+Join DEGs to those maps
+– Scer: direct join on scer_gene_id
+– Cgla: map BG2 or CAGL0 to QNG, then join on QNG
+– Calb: orf19 IDs join directly
+– Klac: map locus_tag to XP_, then join on XP_
+Resulting objects: Scer_og, Cgla_og, Calb_og, Klac_og (DEGs annotated with OG and core status)
+Count DEGs per class keeping NA as unmapped and plot raw counts (plot_degs_og) and within-species percentages (plot_degs_pct_og).
+Compute DEGs as a percent of the total genes in each class using the reference counts as denominators (pct_tbl and pct_tbl_og plot).
 
 ```{r orthogroup-Assignment, warning=FALSE, message=FALSE}
-############################# S.cerevisiae, classify the whole genome into either single core, multicore, none-core genes
-# Three classes per species (based on copy number + presence across the compared species):
-# Single-core: a single-copy gene in the focal species with orthologs in the other species being compared. 
 
-# Multi-core: a duplicated (multi-copy) gene in the focal species with orthologs in the other species. 
-
-# Non-core: no ortholog detected in at least one of the other species (not shared with ). 
+############################# S.cerevisiae, classify the whole genome into either single core, multicore, none-core genes\
+# ------------------ NEW: per-species genome totals ------------------
+genome_totals <- tibble::tribble(
+  ~species, ~genome_total,
+  "Scer", 6477,
+  "Cgla", 5481,
+  "Calb", 6468,
+  "Klac", 5360
+)
 
 # ---- extracting ID patterns with regexp----
-
 scer_pat <- "\\bY[A-P][LR][0-9]{3}[WC](?:-[A-Z])?\\b"   # SGD ORFs
 cgla_pat <- "QNG\\d+(?:\\.\\d+)?"                      # Cg: QNG only
 calb_pat <- "orf\\d+\\.\\d+"                           # Ca: orf19.xxxx
@@ -1819,7 +1859,6 @@ klac_pat <- "XP_\\d+(?:\\.\\d+)?"                      # Kl: RefSeq XP_
 
 collapse_or_na <- function(v) { v <- unique(v); if (length(v)) paste(v, collapse=";") else NA_character_ }
 
-# Core-status helper
 core_status <- function(n_self, n_o1, n_o2, n_o3){
   dplyr::case_when(
     n_self == 0                        ~ NA_character_,   # focal absent
@@ -1829,42 +1868,34 @@ core_status <- function(n_self, n_o1, n_o2, n_o3){
   )
 }
 
-# ================== SLIMMED ORTHOGROUP TABLE ==================
+# ================== ORTHOGROUP TABLE  ==================
 orthogroups_cleaned <- orthogroups %>%
-  select(OG, S_cerevisiae, C_glabrata, C_albicans, K_lactis) %>%
-  mutate(across(c(S_cerevisiae, C_glabrata, C_albicans, K_lactis),
-                ~ na_if(trimws(.), ""))) %>%
+  dplyr::select(OG, S_cerevisiae, C_glabrata, C_albicans, K_lactis) %>%
+  dplyr::mutate(across(c(S_cerevisiae, C_glabrata, C_albicans, K_lactis),
+                       ~ na_if(trimws(.), ""))) %>%
+  dplyr::mutate(
+    scer_ids = stringr::str_extract_all(tidyr::replace_na(S_cerevisiae, ""), scer_pat) |> lapply(unique),
+    cgla_ids = stringr::str_extract_all(tidyr::replace_na(C_glabrata,  ""), cgla_pat) |> lapply(unique),
+    calb_ids = stringr::str_extract_all(tidyr::replace_na(C_albicans,  ""),  calb_pat) |> lapply(unique),
+    klac_ids = stringr::str_extract_all(tidyr::replace_na(K_lactis,    ""),  klac_pat) |> lapply(unique),
 
-  # Extract all gene IDs per species (list-columns)
-  mutate(
-    scer_ids = str_extract_all(replace_na(S_cerevisiae, ""), scer_pat) %>% lapply(unique),
-    cgla_ids = str_extract_all(replace_na(C_glabrata,  ""), cgla_pat) %>% lapply(unique),
-    calb_ids = str_extract_all(replace_na(C_albicans,  ""), calb_pat) %>% lapply(unique),
-    klac_ids = str_extract_all(replace_na(K_lactis,    ""), klac_pat) %>% lapply(unique),
-
-    # Flatten to readable lists for each orthogroup
     Scer_orthgrp_list = vapply(scer_ids, collapse_or_na, character(1)),
     Cgla_orthgrp_list = vapply(cgla_ids, collapse_or_na, character(1)),
     Calb_orthgrp_list = vapply(calb_ids, collapse_or_na, character(1)),
     Klac_orthgrp_list = vapply(klac_ids, collapse_or_na, character(1)),
 
-    # Copy counts per species (rename to n_orthgrp_* as requested)
     n_orthgrp_Scer = lengths(scer_ids),
     n_orthgrp_Cgla = lengths(cgla_ids),
     n_orthgrp_Calb = lengths(calb_ids),
     n_orthgrp_Klac = lengths(klac_ids)
   ) %>%
-
-  # Core status for EACH focal species using the n_orthgrp_* counts
-  mutate(
+  dplyr::mutate(
     scer_core_status = core_status(n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Calb, n_orthgrp_Klac),
     cgla_core_status = core_status(n_orthgrp_Cgla, n_orthgrp_Scer, n_orthgrp_Calb, n_orthgrp_Klac),
     calb_core_status = core_status(n_orthgrp_Calb, n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Klac),
     klac_core_status = core_status(n_orthgrp_Klac, n_orthgrp_Scer, n_orthgrp_Cgla, n_orthgrp_Calb)
   ) %>%
-
-  # Keep only the relevanr columns 
-  select(
+  dplyr::select(
     OG,
     S_cerevisiae, Scer_orthgrp_list, n_orthgrp_Scer, scer_core_status,
     C_glabrata,   Cgla_orthgrp_list, n_orthgrp_Cgla, cgla_core_status,
@@ -1872,38 +1903,68 @@ orthogroups_cleaned <- orthogroups %>%
     K_lactis,     Klac_orthgrp_list, n_orthgrp_Klac, klac_core_status
   )
 
-####### write into csv file 
+# Write cleaned OG table
 write_csv(orthogroups_cleaned, file.path(combined, "20250910_orthogroups_cleaned.csv"))
 
-####################### visualize results 
-# Long table of per-species core status
-status_long <- orthogroups_cleaned %>%
-  select(scer_core_status, cgla_core_status, calb_core_status, klac_core_status) %>%
-  tidyr::pivot_longer(everything(), names_to = "species", values_to = "status") %>%
+# Count **genes** (not OG rows) per core class by summing per-OG copy counts.
+counts_mapped <- dplyr::bind_rows(
+  orthogroups_cleaned %>%
+    group_by(status = scer_core_status) %>%
+    summarise(n = sum(n_orthgrp_Scer, na.rm = TRUE), .groups = "drop") %>%
+    mutate(species = "Scer"),
+
+  orthogroups_cleaned %>%
+    group_by(status = cgla_core_status) %>%
+    summarise(n = sum(n_orthgrp_Cgla, na.rm = TRUE), .groups = "drop") %>%
+    mutate(species = "Cgla"),
+
+  orthogroups_cleaned %>%
+    group_by(status = calb_core_status) %>%
+    summarise(n = sum(n_orthgrp_Calb, na.rm = TRUE), .groups = "drop") %>%
+    mutate(species = "Calb"),
+
+  orthogroups_cleaned %>%
+    group_by(status = klac_core_status) %>%
+    summarise(n = sum(n_orthgrp_Klac, na.rm = TRUE), .groups = "drop") %>%
+    mutate(species = "Klac")
+) %>%
+  filter(!is.na(status)) %>%
   mutate(
-    species = recode(species,
-      scer_core_status = "Scer",
-      cgla_core_status = "Cgla",
-      calb_core_status = "Calb",
-      klac_core_status = "Klac"
-    ),
-    status  = fct_explicit_na(status, na_level = "unmapped"),
-    status  = factor(status, levels = c("non-core","multi-core","single-core","unmapped")),
+    status  = factor(status,  levels = c("non-core","multi-core","single-core")),
     species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
   )
 
-# Counts per status × species (includes "unmapped")
-counts <- status_long %>% 
-  count(status, species, name = "n")
+# Add “unmapped” using your true genome totals
+mapped_totals <- counts_mapped %>%
+  dplyr::group_by(species) %>%
+  dplyr::summarise(mapped_total = sum(n), .groups = "drop")
 
-# # (optional) percent per species
+unmapped_rows <- genome_totals %>%
+  dplyr::mutate(species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))) %>%
+  dplyr::left_join(mapped_totals, by = "species") %>%
+  dplyr::mutate(
+    n = pmax(genome_total - dplyr::coalesce(mapped_total, 0L), 0L),
+    status = factor("unmapped", levels = c("non-core","multi-core","single-core","unmapped"))
+  ) %>%
+  dplyr::select(status, species, n)
+
+# Final reference counts table (denominator for % DE by class)
+counts <- dplyr::bind_rows(
+  counts_mapped %>% dplyr::mutate(status = forcats::fct_expand(status, "unmapped")),
+  unmapped_rows
+) %>%
+  dplyr::mutate(
+    status  = factor(status,  levels = c("non-core","multi-core","single-core","unmapped")),
+    species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
+  )
+
+# Percent per species 
 counts_pct <- counts %>%
-  group_by(species) %>%
-  mutate(pct = 100 * n / sum(n)) %>%
-  ungroup()
+  dplyr::group_by(species) %>%
+  dplyr::mutate(pct = 100 * n / sum(n)) %>%
+  dplyr::ungroup()
 
-# Plot: 4 bars per status (grouped by species)
-############ set theme 
+# ================== Plots  ==================
 bold_theme <- theme(
   axis.title.x = element_text(face = "bold"),
   axis.title.y = element_text(face = "bold"),
@@ -1912,9 +1973,9 @@ bold_theme <- theme(
   plot.title   = element_text(face = "bold"),
   legend.title = element_text(face = "bold"),
   legend.text  = element_text(face = "bold")
-) 
-  
-p_counts <- ggplot(counts, aes(x = status, y = n, fill = species)) +
+)
+
+p_counts_ref <- ggplot(counts, aes(x = status, y = n, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   geom_text(aes(label = n),
             position = position_dodge(width = 0.8),
@@ -1922,8 +1983,7 @@ p_counts <- ggplot(counts, aes(x = status, y = n, fill = species)) +
   labs(x = NULL, y = "Number of genes", title = "Core status by species") +
   theme_minimal() + bold_theme
 
-# # (optional) Percent version
-p_pct <- ggplot(counts_pct, aes(x = status, y = pct, fill = species)) +
+p_pct_ref <- ggplot(counts_pct, aes(x = status, y = pct, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   geom_text(aes(label = sprintf("%.1f%%", pct)),
             position = position_dodge(width = 0.8),
@@ -1931,122 +1991,94 @@ p_pct <- ggplot(counts_pct, aes(x = status, y = pct, fill = species)) +
   labs(x = NULL, y = "Percent of genes per species", title = "Core status (percent) by species") +
   theme_minimal() + bold_theme
 
- p_counts
- p_pct  # uncomment to see percentage plot
+p_counts_ref
+p_pct_ref
 
-##### If you also want thicker axis lines/ticks (not just bold text), add:
-# bold_theme <- bold_theme + theme(
-#   axis.line  = element_line(linewidth = 0.7),
-#   axis.ticks = element_line(linewidth = 0.7)
-# )
+ 
+################# the DEGs 
+# ---------- Build per-gene maps from orthogroups_cleaned ----------
+# (explode the *_orthgrp_list into one row per gene, keep OG + core status)
 
-# Load Scer DEGs results 
-Scer_Degs  <- read_csv(here("06.results", "Scer", "20250826Scer.LFCgt2.padj0.01.csv"), 
-                          show_col_types = FALSE) %>%
-  rename(scer_gene_id = gene_id)
+scer_map <- orthogroups_cleaned %>%
+  dplyr::select(OG, scer_core_status, n_orthgrp_Scer, Scer_orthgrp_list) %>%
+  tidyr::separate_rows(Scer_orthgrp_list, sep = ";", convert = FALSE) %>%
+  dplyr::transmute(
+    scer_gene_id = trimws(Scer_orthgrp_list),
+    OG, scer_core_status, n_orthgrp_Scer
+  ) %>%
+  dplyr::filter(!is.na(scer_gene_id), scer_gene_id != "") %>%
+  dplyr::distinct()
 
-# Left join to preserve all DEGs
-Scer_og <- Scer_Degs %>% 
-  left_join(orthogroup2, by = "scer_gene_id") #%>%
-  #select(Scer_geneID, OG, C_albicans, C_glabrata, K_lactis, S_cerevisiae)
+cgla_map <- orthogroups_cleaned %>%
+  dplyr::select(OG, cgla_core_status, n_orthgrp_Cgla, Cgla_orthgrp_list) %>%
+  tidyr::separate_rows(Cgla_orthgrp_list, sep = ";", convert = FALSE) %>%
+  dplyr::transmute(
+    cgla_gene_id = trimws(Cgla_orthgrp_list),  # QNG ids
+    OG, cgla_core_status, n_orthgrp_Cgla
+  ) %>%
+  dplyr::filter(!is.na(cgla_gene_id), cgla_gene_id != "") %>%
+  dplyr::distinct()
 
+calb_map <- orthogroups_cleaned %>%
+  dplyr::select(OG, calb_core_status, n_orthgrp_Calb, Calb_orthgrp_list) %>%
+  tidyr::separate_rows(Calb_orthgrp_list, sep = ";", convert = FALSE) %>%
+  dplyr::transmute(
+    calb_gene_id = trimws(Calb_orthgrp_list),  # orf19.xxxx
+    OG, calb_core_status, n_orthgrp_Calb
+  ) %>%
+  dplyr::filter(!is.na(calb_gene_id), calb_gene_id != "") %>%
+  dplyr::distinct()
 
-############################ C.glabrata
+klac_map <- orthogroups_cleaned %>%
+  dplyr::select(OG, klac_core_status, n_orthgrp_Klac, Klac_orthgrp_list) %>%
+  tidyr::separate_rows(Klac_orthgrp_list, sep = ";", convert = FALSE) %>%
+  dplyr::transmute(
+    klac_gene_id = trimws(Klac_orthgrp_list),  # XP_...
+    OG, klac_core_status, n_orthgrp_Klac
+  ) %>%
+  dplyr::filter(!is.na(klac_gene_id), klac_gene_id != "") %>%
+  dplyr::distinct()
 
-# Load Cgla DEGs results 
-Cgla_Degs  <- read_csv(here("06.results", "Cgla", "20250826Cgla.LFCgt2.padj0.01.csv"), 
-                       show_col_types = FALSE) #%>%
-  #rename(gwk60_id = gene_id)
+Scer_og <- Scer_Degs %>% dplyr::left_join(scer_map, by = "scer_gene_id")
 
-############ read in the C.glabrata proteom to BG2 annotation mapping file 
-Cgla_BG2Protmapping  <- read_csv(here("06.results", "Cgla", "qng_gwk_cagl_threeway_map_complete.csv"), 
-                                 show_col_types = FALSE) %>%
-  rename(gene_id = gwk60_id)
-
-###################  Map IDs in DEGs file to the proteom IDs used in orthofinder 
 Cgla_mapped <- Cgla_Degs %>%
-  #distinct(gwk60_id) %>%
-  left_join(Cgla_BG2Protmapping,
-            by = "gene_id") %>%
-  rename(cgla_gene_id = qng_id)
+  dplyr::left_join(Cgla_BG2Protmapping, by = "gene_id") %>%
+  dplyr::rename(cgla_gene_id = qng_id)
 
-# Left join to preserve all DEGs
-Cgla_og <- Cgla_mapped %>%
-  left_join(
-    orthogroup2 %>% 
-      filter(!is.na(cgla_gene_id)) %>% 
-      distinct(cgla_gene_id, .keep_all = TRUE),
-    by = "cgla_gene_id"
-  ) #%>%
-  #select(qng_id, gwk60_id, cagl_id,gene_name, OG, C_albicans, C_glabrata, K_lactis, S_cerevisiae)
+Cgla_og <- Cgla_mapped %>% dplyr::left_join(cgla_map, by = "cgla_gene_id")
 
-############### C. albicans 
-# Load Cgla DEGs results 
-Calb_Degs  <- read_csv(here("06.results", "Calb", "20250826Calb.LFCgt2.padj0.01.csv"), 
-                       show_col_types = FALSE) %>% 
-  rename(calb_gene_id = gene_id)
+Calb_og <- Calb_Degs %>% dplyr::left_join(calb_map, by = "calb_gene_id")
 
-######### left join
-Calb_og <- Calb_Degs %>%
-  left_join(
-    orthogroup2 %>% 
-      filter(!is.na(calb_gene_id)) %>% 
-      distinct(calb_gene_id, .keep_all = TRUE),
-    by = "calb_gene_id"
-  ) #%>%
-
-
-################## K.lactis  
-# Load Klac DEGs results 
-Klac_Degs  <- read_csv(here("06.results", "Klac", "20250826Klac.LFCgt2.padj0.01.csv"), 
-                       show_col_types = FALSE) %>%
-  rename(locus_tag = gene_id)
-
-############ read in the C.glabrata proteom to BG2 annotation mapping file 
-Klac_xpklla0tmapping  <- read_csv(here("06.results", "Klac", "xp_to_klla0_mapping.csv"), 
-                                  show_col_types = FALSE) 
-  
-
-#### left join to Degs 
 Klac_mapped <- Klac_Degs %>%
-  #distinct(gwk60_id) %>%
-  left_join(Klac_xpklla0tmapping,
-            by = "locus_tag") %>%
-  rename(klac_gene_id = xp_id)
+  dplyr::left_join(Klac_xpklla0tmapping, by = "locus_tag") %>%
+  dplyr::rename(klac_gene_id = xp_id)
 
-# Left join to othogroup data preserve all DEGs
-Klac_og <- Klac_mapped %>%
-  left_join(
-    orthogroup2 %>% 
-      filter(!is.na(klac_gene_id)) %>% 
-      distinct(klac_gene_id, .keep_all = TRUE),
-    by = "klac_gene_id"
-  ) #
+Klac_og <- Klac_mapped %>% dplyr::left_join(klac_map, by = "klac_gene_id")
 
-################# count results 
-# keep NA as a category called "unmapped", that is singleton clusters without OG assignment by orthofinder 
+
+#############
+## ---------- 1) Count DEGs by core class (keeps 'unmapped') ----------
 count_status_keep_na <- function(df, status_col, label){
   df %>%
-    mutate(
-      status = fct_explicit_na(.data[[status_col]], na_level = "unmapped"),
+    dplyr::mutate(
+      status  = forcats::fct_explicit_na(.data[[status_col]], na_level = "unmapped"),
       species = label
     ) %>%
-    count(status, species, name = "n")
+    dplyr::count(status, species, name = "n")
 }
 
-counts_og <- bind_rows(
+counts_og <- dplyr::bind_rows(
   count_status_keep_na(Scer_og, "scer_core_status", "Scer"),
   count_status_keep_na(Cgla_og, "cgla_core_status", "Cgla"),
   count_status_keep_na(Calb_og, "calb_core_status", "Calb"),
   count_status_keep_na(Klac_og, "klac_core_status", "Klac")
 ) %>%
-  mutate(
-    status  = factor(status, levels = c("non-core","multi-core","single-core","unmapped")),
+  dplyr::mutate(
+    status  = factor(status,  levels = c("non-core","multi-core","single-core","unmapped")),
     species = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
   )
 
-
-####### plot data 
+## ---------- 2) Plots: raw counts & within-species percent ----------
 plot_degs_og <- ggplot(counts_og, aes(x = status, y = n, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   geom_text(aes(label = n),
@@ -2055,38 +2087,37 @@ plot_degs_og <- ggplot(counts_og, aes(x = status, y = n, fill = species)) +
   labs(x = NULL, y = "Number of DEGs", title = "DEGs by core status across species") +
   theme_minimal() + bold_theme
 
-plot_degs_og
-
-########### # convert counts -> percent within each species. 
 counts_pct_og <- counts_og %>%
-  group_by(species) %>%
-  mutate(pct = 100 * n / sum(n)) %>%
-  ungroup()
-# plot percentages
+  dplyr::group_by(species) %>%
+  dplyr::mutate(pct = 100 * n / sum(n)) %>%
+  dplyr::ungroup()
+
 plot_degs_pct_og <- ggplot(counts_pct_og, aes(x = status, y = pct, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   geom_text(aes(label = sprintf("%.1f%%", pct)),
             position = position_dodge(width = 0.8),
             vjust = -0.3, size = 3, fontface = "bold") +
-  labs(x = NULL, y = "Percent of genes per species", title = "Core status (percent) by species") +
+  labs(x = NULL, y = "Percent of DEGs per species",
+       title = "DEGs distribution across core classes (within species)") +
   theme_minimal() + bold_theme
+
 plot_degs_og
 plot_degs_pct_og
 
-#################### percentage of deges in each core status classificationn as percentage of ref genome 
-# counts      = genome-wide counts by species × status  (denominator)
-# counts_og   = DEG counts      by species × status      (numerator)
+
+# Build the table: DEGs as % of genes in that class (by species)
 pct_tbl <- counts_og %>%
-  rename(n_degs  = n) %>%
-  left_join(counts %>% rename(n_genes = n),
-            by = c("species","status")) %>%
-  mutate(
-    n_degs  = replace_na(n_degs, 0L),
-    pct_of_genes = ifelse(is.na(n_genes) | n_genes == 0, NA_real_,
-                          100 * n_degs / n_genes),
-    status  = factor(status,  levels = c("non-core","multi-core","single-core", "unmapped")),
-    species = factor(species, levels = c("Scer","Cgla","Calb","Klac", "unmapped"))
+  dplyr::rename(n_degs = n) %>%
+  dplyr::left_join(counts %>% dplyr::rename(n_genes = n),
+                   by = c("species","status")) %>%
+  dplyr::mutate(
+    n_degs   = tidyr::replace_na(n_degs, 0L),
+    n_genes  = tidyr::replace_na(n_genes, 0L),
+    pct_of_genes = dplyr::if_else(n_genes > 0, 100 * n_degs / n_genes, NA_real_),
+    status   = factor(status,  levels = c("non-core","multi-core","single-core","unmapped")),
+    species  = factor(species, levels = c("Scer","Cgla","Calb","Klac"))
   )
+
 # Plot: DEGs as % of genes in each class (grouped by species)
 pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
@@ -2098,8 +2129,8 @@ pct_tbl_og <- ggplot(pct_tbl, aes(x = status, y = pct_of_genes, fill = species))
        title = "DEG burden by core status across species") +
   theme_minimal() + bold_theme
 
-plot_degs_og ##
 pct_tbl_og
+
 ```
 
 Goal
@@ -2153,9 +2184,6 @@ Full coverage table and a filtered “protein-coding only (has XP_) but missing 
 
 ```{r missing-genes-from-OG-Assignment, warning=FALSE, message=FALSE}
 ################################## get the full gene list from the ref folder 
-#and create data frame with gene_id and gene_name. 
-#Set difference from this and the orthogroup data set to kn ow which genes are not in the orthogroup data set 
-
 scer_gtf <- here("04.refs", "s288cSc-R64.gtf") 
 gtf <- fread(
   scer_gtf, sep = "\t", header = FALSE, data.table = FALSE,
@@ -2327,46 +2355,50 @@ write_csv(calb_missing_from_og, file.path(Calb_results, "20250911_Calb_missing_f
 
 
 ############ K. lactis 
+# read the GFF3
+klac_gff3 <- here("04.refs", "NRRLY1140_Kl_gca_000002515.ASM251v1.60.gff3")
+gff_kl <- data.table::fread(
+  klac_gff3,
+  sep="\t", header=FALSE, col.names=c("seqname","source","feature",
+  "start","end","score","strand","frame","attribute"),
+  quote="", data.table=FALSE
+)
 
-klac_gtf <- here("04.refs", "CBS2105_kl.gtf")  
-
-# Helper to pull attributes from GTF 'attribute' column
-get_attr <- function(x, key){
-  m <- stringr::str_match(x, paste0(key, " \"([^\"]+)\""))
+# helper for key=value attributes
+get_attr_gff3 <- function(attr, key) {
+  m <- stringr::str_match(attr, paste0(key, "=([^;]+)"))
   m[,2]
 }
 
-xp_pat <- "XP_\\d+(?:\\.\\d+)?"
-
-# 1) Parse GTF -> Klac gene table (map gene_id -> XP_ protein if available)
-gtf_kl <- fread(
-  klac_gtf, sep = "\t", header = FALSE, data.table = FALSE,
+klac_gff3 <- here("04.refs", "NRRLY1140_Kl_gca_000002515.ASM251v1.60.gff3")
+gff_kl <- data.table::fread(
+  klac_gff3,
+  sep = "\t",
+  header = FALSE,
   col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
-  quote = "" #, comment.char = "#"
+  quote = "",
+  data.table = FALSE
 )
 
-klac_gene_list <- gtf_kl %>%
-  transmute(
+klac_gene_list <- gff_kl %>%
+  dplyr::transmute(
     feature,
-    gene_id    = coalesce(get_attr(attribute, "gene_id"),
-                          get_attr(attribute, "ID"),
-                          get_attr(attribute, "locus_tag"),
-                          get_attr(attribute, "Name")),
-    gene_name  = coalesce(get_attr(attribute, "gene_name"),
-                          get_attr(attribute, "Name")),
-    # XP_ may appear in protein_id or Dbxref fields; fall back to "any XP_ in attribute"
-    xp_from_protein = get_attr(attribute, "protein_id"),
-    xp_from_dbxref  = {
-      m <- str_extract(attribute, xp_pat); m
-    }
+    # The locus tag is stored as gene_id or locus_tag in GFF3
+    gene_id  = dplyr::coalesce(
+      get_attr_gff3(attribute,"gene_id"),
+      get_attr_gff3(attribute,"locus_tag"),
+      get_attr_gff3(attribute,"ID"),
+      get_attr_gff3(attribute,"Name")
+    ),
+    gene_name = dplyr::coalesce(
+      get_attr_gff3(attribute,"gene_name"),
+      get_attr_gff3(attribute,"Name")
+    )
   ) %>%
-  filter(!is.na(gene_id)) %>%
-  { if (any(.$feature == "gene")) filter(., feature == "gene") else . } %>%
-  mutate(
-    gene_id = sub("^gene-", "", gene_id),
-    xp_id   = coalesce(xp_from_protein, xp_from_dbxref)
-  ) %>%
-  distinct(gene_id, gene_name, xp_id)
+  dplyr::filter(!is.na(gene_id)) %>%
+  dplyr::filter(feature == "gene") %>%
+  dplyr::mutate(gene_id = sub("^gene-", "", gene_id)) %>%
+  dplyr::distinct(gene_id, gene_name)
 
 # 2) Explode orthogroup Klac list (XP_) -> per-gene OG map
 klac_og_map <- orthogroups_cleaned %>%
@@ -2398,14 +2430,74 @@ klac_missing_from_og_xpOnly <- klac_gene_og_status %>%
 
 ```
 
+Goal
+
+Replicate Doughty et al. Fig. 1c for each species: quantify whether DE genes are enriched or depleted within each core-status class (non-core / multi-core / single-core), after normalizing by the genome-wide DE rate.
+
+
+Inputs
+Scer_DE_topGo.csv, Cgla_DE_topGo.csv, Calb_DE_topGo.csv, Klac_DE_topGo.csv: full DESeq2 outputs (all genes tested: gene_id, log2FoldChange, padj).
+orthogroup2: orthology/master table with *_orthgrp_list (IDs per OG) and *_core_status (non-core / multi-core / single-core).
+Mapping tables for species that need them:
+Cgla: qng_gwk_cagl_threeway_map_complete.csv (GWK60/CAGL0 → QNG).
+Klac: xp_to_klla0_mapping.csv (locus_tag ↔ XP_).
+
+Thresholds / rule used (configurable)
+fdr_cutoff = 0.01
+lfc_thr = 1
+use_abs = FALSE → counts “up-regulated only” (log2FC > 1).
+(Set use_abs = TRUE for |log2FC| > 1, both directions.)
+
+Build a per-gene core-status map (from orthogroup2)
+“Explode” each species’ *_orthgrp_list into one row per gene ID and keep its *_core_status.
+Result: small lookup tables (scer_map, cgla_map, calb_map, klac_map): gene_id ↔ core_status.
+Align identifiers & join
+Scer/Calb: gene_id already matches *_orthgrp_list (SGD ORFs / orf19.*).
+
+Cgla: convert DESeq gene_id (GWK60/CAGL0) → QNG via mapping, then join to cgla_map.
+Klac: convert DESeq gene_id (locus_tag) → XP_ (or back, depending on files) via mapping, then join to klac_map.
+Define the analysis universe (denominators)
+For each species, keep genes with:
+a known core_status and
+detected by DESeq (i.e., padj not NA).
+Count how many such genes fall in each class → n_class.
+Define DE calls consistently (numerators)
+Within the same universe, flag DE per gene with:
+
+padj < fdr_cutoff and
+(log2FC > lfc_thr) if use_abs = FALSE, else (|log2FC| > lfc_thr).
+Sum DEs inside each class → n_deg.
+
+Normalize to the genome-wide DE rate
+Compute the overall DE rate across the whole universe:
+overall_rate = total_DE / total_detected.
+
+For each class:
+rate_class = n_deg / n_class
+fold_enrichment = rate_class / overall_rate
+
+Statistics (per class)
+
+Build a 2×2 table:
+[  n_deg            ,  n_class - n_deg           ]
+[  overall_DE - n_deg,  (overall_N - n_class) - ...]
+
+Two-sided Fisher’s exact test → p_value.
+Convert to significance stars for plotting: *** <0.001, ** <0.01, * <0.05.
+
+Outputs
+Per-species summary tables: fig1c_scer, fig1c_cgla, fig1c_calb, fig1c_klac with
+status, n_class, n_deg, rate_class, fold_enrichment, p_value, species.
+
+Combined table fig1c_all.
+Plot object p_fig1c_all: grouped bars of fold_enrichment by status, colored by species, dashed line at 1, significance stars on top.
+
+Why the normalization matters
+Raw counts can’t be compared directly across classes because classes can have different sizes and detection rates.
+By dividing each class’s DE rate by the overall DE rate, a fold_enrichment ≈ 1 means “as expected”, >1 means enriched, <1 depleted—independent of class size.
+
 
 ```{r doughty-fig3-d, warning=FALSE, message=FALSE}
-# Scer_DE_topGo.csv = full DESeq2 results for S. cerevisiae (all tested genes, not just DEGs), with columns like gene_id, log2FoldChange, padj.
-# 
-# orthogroup2 = your master orthology table containing for Scer the columns Scer_orthgrp_list (semi-colon list of SGD ORFs in the orthogroup) and scer_core_status (non-core / multi-core / single-core).
-# 
-# Scer_og = the already-subset Scer DEG table you created earlier (DEGs joined to orthogroup2, so it includes scer_core_st
-
 
 # S. cerevisiae — FULL DESeq results (not subsetted)
 scer_full <- read_csv(here("06.results", "Scer", "Scer_DE_topGo.csv"), 
@@ -2418,8 +2510,8 @@ fdr_cutoff <- 0.01   # instead of alpha
 lfc_thr    <- 1
 use_abs    <- FALSE
 
-# --- Build per-gene maps directly from orthogroup2 (explode *_orthgrp_list) --- Build a per-gene mapping from orthogroups to core status
-scer_map <- orthogroup2 %>%
+# --- Build per-gene maps directly from orthogroup (explode *_orthgrp_list) --- Build a per-gene mapping from orthogroups to core status
+scerMap <- orthogroups_cleaned %>%
   transmute(scer_core_status,
             scer_gene_id = strsplit(replace_na(Scer_orthgrp_list, ""), ";")) %>%
   unnest_longer(scer_gene_id) %>%
@@ -2429,7 +2521,7 @@ scer_map <- orthogroup2 %>%
 
 ## Join full DESeq table to core status and coerce numeric
 full_status_scer <- scer_full %>%
-  left_join(scer_map, by = "scer_gene_id") %>%
+  left_join(scerMap, by = "scer_gene_id") %>%
   mutate(
     padj_num = suppressWarnings(as.double(padj)),
     l2fc_num = suppressWarnings(as.double(log2FoldChange))
@@ -2446,7 +2538,7 @@ overall_rate <- overall_deg / overall_n
 
 ## --- Denominators: detected per class (same as before) ---
 denoms_scer <- full_status_scer %>%
-  count(status = scer_core_status, name = "n_class")
+  dplyr::count(status = scer_core_status, name = "n_class")
 
 ## --- Numerators: DE within the SAME universe + SAME rule ---
 degs_by_class_scer <- full_status_scer %>%
@@ -2477,22 +2569,19 @@ cgla_full <- read_csv(here("06.results", "Cgla", "Cgla_DE_topGo.csv"),
                       show_col_types = FALSE) %>%
   mutate(cgla_gene_id = gene_id) 
 
-cgla_map <- orthogroup2 %>%
+cglaMap <- orthogroups_cleaned %>%
   transmute(cgla_core_status,
             cgla_gene_id = strsplit(replace_na(Cgla_orthgrp_list, ""), ";")) %>%
   unnest_longer(cgla_gene_id) %>%
   mutate(cgla_gene_id = na_if(trimws(cgla_gene_id), "")) %>%
   filter(!is.na(cgla_gene_id), !is.na(cgla_core_status)) %>%
-  distinct(cgla_gene_id, cgla_core_status) %>% 
-  rename(qng_id = cgla_gene_id) %>%
-  left_join(Cgla_BG2Protmapping, by = "qng_id") %>%
-  select(gene_id, cgla_core_status) %>%
-  rename(cgla_gene_id = gene_id)
-  
+  distinct(cgla_gene_id, cgla_core_status) %>%
+  left_join(Cgla_BG2Protmapping, by = c("cgla_gene_id" = "qng_id"))
+
 
 ## --- Join full DESeq table to core status and coerce numeric ---
 full_status_cgla <- cgla_full %>%
-  left_join(cgla_map, by = "cgla_gene_id") %>%
+  left_join(cglaMap, by = c("gene_id" = "gene_id")) %>%
   mutate(
     padj_num = suppressWarnings(as.double(padj)),
     l2fc_num = suppressWarnings(as.double(log2FoldChange))
@@ -2509,7 +2598,7 @@ overall_rate_cgla <- overall_deg_cgla / overall_n_cgla
 
 ## --- Denominators (detected per class) ---
 denoms_cgla <- full_status_cgla %>%
-  count(status = cgla_core_status, name = "n_class")
+  dplyr::count(status = cgla_core_status, name = "n_class")
 
 ## --- Numerators (your already-joined DEGs table for Cgla) ---
 degs_by_class_cgla <- full_status_cgla %>%
@@ -2541,7 +2630,7 @@ calb_full <- read_csv(here("06.results", "Calb", "Calb_DE_topGo.csv"),
   mutate(calb_gene_id = gene_id) 
 
 ############# 2 Per-gene core status map from orthogroup2 (explode Calb_orthgrp_list)
-calb_map <- orthogroup2 %>%
+calbMap <- orthogroups_cleaned %>%
   transmute(calb_core_status,
             calb_gene_id = strsplit(replace_na(Calb_orthgrp_list, ""), ";")) %>%
   unnest_longer(calb_gene_id) %>%
@@ -2551,7 +2640,7 @@ calb_map <- orthogroup2 %>%
 
 # 3) Join full DESeq to core status; coerce numerics; keep detected & mapped
 full_status_calb <- calb_full %>%
-  left_join(calb_map, by = "calb_gene_id") %>%
+  left_join(calbMap, by = "calb_gene_id") %>%
   mutate(
     padj_num = suppressWarnings(as.double(padj)),
     l2fc_num = suppressWarnings(as.double(log2FoldChange))
@@ -2568,7 +2657,7 @@ overall_rate_calb <- overall_deg_calb / overall_n_calb
 
 # 5) Denominators per class (detected)
 denoms_calb <- full_status_calb %>%
-  count(status = calb_core_status, name = "n_class")
+  dplyr::count(status = calb_core_status, name = "n_class")
 
 # 6) Numerators per class (DE within the SAME universe/rule)
 degs_by_class_calb <- full_status_calb %>%
@@ -2600,26 +2689,25 @@ klac_full <- read_csv(here("06.results", "Klac", "Klac_DE_topGo.csv"),
   mutate(klac_gene_id = gene_id) 
 
 ############# 2 Per-gene core status map from orthogroup2 (explode Calb_orthgrp_list
-klac_map <- orthogroup2 %>%
+klacMap <- orthogroups_cleaned %>%
   transmute(klac_core_status,
             klac_gene_id = strsplit(replace_na(Klac_orthgrp_list, ""), ";")) %>%
   unnest_longer(klac_gene_id) %>%
   mutate(klac_gene_id = na_if(trimws(klac_gene_id), "")) %>%
   filter(!is.na(klac_gene_id), !is.na(klac_core_status)) %>%
-  distinct(klac_gene_id, klac_core_status) %>% 
-  rename(xp_id = klac_gene_id) %>%
-  left_join(Klac_xpklla0tmapping, by = "xp_id") %>%
-  select(locus_tag, klac_core_status) %>%
-  rename(klac_gene_id = locus_tag)
-  
-# 3) Join, coerce numerics, keep detected & mapped (denominator universe)
+  distinct(klac_gene_id, klac_core_status) %>%
+  left_join(Klac_xpklla0tmapping, by = c("klac_gene_id" = "xp_id"))
+
+
+## --- Join full DESeq table to core status and coerce numeric ---
 full_status_klac <- klac_full %>%
-  left_join(klac_map, by = "klac_gene_id") %>%
+  left_join(klacMap, by = c("gene_id" = "locus_tag")) %>%
   mutate(
     padj_num = suppressWarnings(as.double(padj)),
     l2fc_num = suppressWarnings(as.double(log2FoldChange))
   ) %>%
-  filter(!is.na(klac_core_status), !is.na(padj_num))
+  filter(!is.na(klac_core_status), !is.na(padj_num))            # detected mRNAs in OGs
+
 
 # 4) Overall DE flags/rate (same rule you use everywhere)
 is_deg_klac <- (full_status_klac$padj_num < fdr_cutoff) &
@@ -2631,7 +2719,7 @@ overall_rate_klac <- overall_deg_klac / overall_n_klac
 
 # 5) Denominators per class
 denoms_klac <- full_status_klac %>%
-  count(status = klac_core_status, name = "n_class")
+  dplyr::count(status = klac_core_status, name = "n_class")
 
 # 6) Numerators per class (DE within SAME universe/rule)
 degs_by_class_klac <- full_status_klac %>%
