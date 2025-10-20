@@ -1,5 +1,5 @@
 ---
-title: "Gene Age and Stress Adaptation: A Comparative Transcriptomic Analysis of Phosphate Starvation in Budding Yeast"
+title: "Exploratroy Analysis: Gene Age and Stress Adaptation: A Comparative Transcriptomic Analysis of Phosphate Starvation in Budding Yeast"
 author: "Joshua Ayelazuno"
 date: "`r Sys.Date()`"
 output: 
@@ -64,16 +64,16 @@ library(here)
 library(data.table)
 ###### Load species raw count matrices
 ####### S. cerevisiae
-Scer <- read_tsv(here("05.metadata", "Scer", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+Scer <- read_tsv(here("06.results", "Scer", "20251014_Scer_counts.tsv"), show_col_types = FALSE)
 
 ####### C. glabrata 
-Cgla <- read_tsv(here("05.metadata", "Cgla", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+Cgla <- read_tsv(here("06.results", "Cgla", "20251014_Cgla_counts.tsv"), show_col_types = FALSE)
 
 ####### C. albicans 
-Calb <- read_tsv(here("05.metadata", "Calb", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+Calb <- read_tsv(here("06.results", "Calb", "20251014_Calb_counts.tsv"), show_col_types = FALSE)
 
 ####### K. lactis 
-Klac <- read_tsv(here("05.metadata", "Klac", "salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+Klac <- read_tsv(here("06.results", "Klac", "20251014_Klac_counts.tsv"), show_col_types = FALSE)
 
 ##### Create file paths for output
 Scer_results <- here("06.results", "Scer")
@@ -88,9 +88,255 @@ Cgla_plots <- here("08.plots", "Cgla")
 Calb_plots <- here("08.plots", "Calb")
 Klac_plots <- here("08.plots", "Klac")
 
-
 ############ load orthogroup data file 
-orthogroups <- read_tsv(here("02.annotationdata", "species_orthology.tsv"),  show_col_types = FALSE)
+#orthogroups <- read_tsv(here("02.annotationdata", "species_orthology.tsv"),  show_col_types = FALSE)
+#---------------------------------------------------------------------
+# DESeq analysis across all time points (t0000 vs. tXXXX) for a species
+#---------------------------------------------------------------------
+run_DESeq_timecourse <- function(counts_df,
+                                 species,
+                                 results_dir,
+                                 plots_dir,
+                                 lfc_thr    = 1,
+                                 fdr_cutoff = 0.01,
+                                 use_abs    = TRUE) {
+  dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(plots_dir,   recursive = TRUE, showWarnings = FALSE)
+
+  # Use gene_id as rownames
+  rownames(counts_df) <- counts_df$gene_id
+  count_mat <- counts_df[, setdiff(colnames(counts_df), "gene_id"), drop = FALSE]
+  count_mat <- as.data.frame(lapply(count_mat, as.integer))
+  rownames(count_mat) <- rownames(counts_df)
+
+  # Extract timepoints (tXXXX) from colnames
+  time_points <- gsub("^.*?(t\\d{4}).*$", "\\1", colnames(count_mat))
+  unique_times <- unique(time_points)
+  baseline <- unique_times[unique_times == "t0000"]
+  other_times <- setdiff(unique_times, baseline)
+
+  # Loop through each comparison (baseline vs other timepoints)
+  for (tp in other_times) {
+    pattern <- paste0(baseline, "|", tp)
+    sel_cols <- grep(pattern, colnames(count_mat), value = TRUE)
+    sub_counts <- count_mat[, sel_cols, drop = FALSE]
+
+    # Build sample metadata:
+    #  * condition: untreated if col contains baseline, else treated
+    #  * rep_num: extract b# from column
+    #  * sample_id: paste condition and rep_num so replicates collapse by condition+rep
+    condition_vec <- ifelse(grepl(paste0("\\.", baseline, "\\."), sel_cols),
+                            "untreated", "treated")
+    rep_tag <- str_extract(sel_cols, "\\.b\\d+")
+    rep_num <- sub("^\\.b", "", rep_tag)
+    sample_id <- paste(condition_vec, rep_num, sep = "_")
+
+    coldata <- data.frame(
+      row.names = sel_cols,
+      condition = factor(condition_vec, levels = c("untreated", "treated")),
+      sample    = sample_id,
+      run       = sel_cols,
+      stringsAsFactors = FALSE
+    )
+
+    # Build DESeq dataset and collapse technical replicates grouped by sample_id
+    dds <- DESeqDataSetFromMatrix(countData = sub_counts,
+                                  colData   = coldata,
+                                  design    = ~ condition)
+    dds_collapsed <- collapseReplicates(dds,
+                                        groupby = coldata$sample,
+                                        run     = coldata$run)
+    # Reassign conditions after collapsing (one per unique sample_id)
+    colData(dds_collapsed)$condition <-
+      colData(dds)[!duplicated(coldata$sample), "condition"]
+
+    # DESeq2 analysis
+    dds_collapsed <- DESeq(dds_collapsed)
+    res_lfc <- lfcShrink(dds_collapsed,
+                         coef = "condition_treated_vs_untreated",
+                         type = "apeglm")
+
+    # Full result table
+    topGo_df <- as.data.frame(res_lfc) %>%
+      tibble::rownames_to_column("gene_id") %>%
+      mutate(gene_id = sub("^gene-", "", gene_id))
+    write.csv(topGo_df,
+              file.path(results_dir,
+                        paste0(species, "_", tp, "_DE_topGo.csv")),
+              row.names = FALSE)
+    # Create a full results data frame
+    topGo_df <- as.data.frame(res_lfc) %>%
+      tibble::rownames_to_column("gene_id") %>%
+      dplyr::mutate(gene_id = sub("^gene-", "", gene_id))
+
+    # Save full expression matrix 
+
+    # Identify significant DEGs
+    is_sig <- with(topGo_df,
+                   padj < fdr_cutoff &
+                   if (use_abs) abs(log2FoldChange) > lfc_thr
+                   else          log2FoldChange  > lfc_thr)
+
+    sig_df      <- topGo_df[is_sig, , drop = FALSE]
+    sig_df_up   <- sig_df[sig_df$log2FoldChange >  0, , drop = FALSE]
+    sig_df_down <- sig_df[sig_df$log2FoldChange <  0, , drop = FALSE]
+
+    # Write DEGs and gene lists
+    
+
+    # rlog transform and PCA
+    rld    <- rlog(dds_collapsed, blind = TRUE)
+    rldmat <- assay(rld)
+    pca    <- prcomp(t(rldmat))
+    pct    <- round(100 * (pca$sdev^2 / sum(pca$sdev^2)))
+
+    sample_info <- as.data.frame(colData(dds_collapsed))
+    sample_info$sample <- rownames(sample_info)
+    pca_df <- data.frame(
+      PC1    = pca$x[, 1],
+      PC2    = pca$x[, 2],
+      sample = rownames(pca$x),
+      group  = sample_info$condition
+    )
+
+    # Make PCA plot
+    pca_plot <- ggplot(pca_df, aes(x = PC1, y = PC2, color = group)) +
+      geom_point(size = 6, alpha = 0.8) +
+      labs(
+        title = paste(species, "- PCA:", baseline, "vs", tp),
+        x     = paste0("PC1 (", pct[1], "%)"),
+        y     = paste0("PC2 (", pct[2], "%)")
+      ) +
+      theme_minimal(base_size = 18) +
+      theme(
+        plot.title = element_text(hjust = 0.5, size = 22, face = "bold"),
+        axis.title = element_text(size = 18, face = "bold"),
+        axis.text  = element_text(size = 16),
+        legend.title = element_blank(),
+        legend.text  = element_text(size = 14),
+        legend.key.size = unit(1, "cm")
+      )
+
+    # Save PCA plot
+    ggsave(
+      filename = file.path(
+        plots_dir,
+        paste0("PCA_", species, "_", baseline, "_vs_", tp, ".pdf")
+      ),
+      plot  = pca_plot,
+      width = 8,
+      height= 6
+    )
+
+    # MA plot
+    pdf(file.path(plots_dir,
+        paste0("MA_", species, "_", baseline, "_vs_", tp, ".pdf")))
+    plotMA(res_lfc,
+           main = paste0("MA Plot - ", species, " ", baseline, " vs ", tp),
+           cex  = 0.5)
+    dev.off()
+
+    # Volcano plot
+    tab <- data.frame(
+      logFC = res_lfc$log2FoldChange,
+      negLogPval = -log10(res_lfc$padj)
+    )
+    sig <- with(tab,
+                if (use_abs) abs(logFC) > lfc_thr else logFC > lfc_thr
+                & negLogPval > -log10(fdr_cutoff))
+
+    pdf(file.path(plots_dir,
+        paste0("Volcano_", species, "_", baseline, "_vs_", tp, ".pdf")))
+    plot(tab,
+         pch = 16,
+         cex = 0.5,
+         xlab = expression(bold(log[2]~fold~change)),
+         ylab = expression(bold(-log[10]~FDR)),
+         main = paste0("Volcano Plot - ", species,
+                       " ", baseline, " vs ", tp))
+    points(tab[sig, ], col = "red", pch = 16, cex = 0.6)
+    abline(h = -log10(fdr_cutoff), col = "green3", lty = 2)
+    abline(v = c(-lfc_thr, lfc_thr), col = "blue", lty = 2)
+    dev.off()
+
+    # Histogram of p-values and adjusted p-values
+    pdf(file.path(plots_dir,
+        paste0("Histogram_pvalue_", species, "_", baseline, "_vs_", tp, ".pdf")))
+    hist(res_lfc$pvalue,
+         breaks = 50,
+         col    = "grey",
+         main   = paste("Distribution of Raw p-values:", species, tp),
+         xlab   = "p-values",
+         ylab   = "Frequency",
+         cex.main = 1.5,
+         cex.lab  = 1.2)
+    dev.off()
+
+    pdf(file.path(plots_dir,
+        paste0("Histogram_padj_", species, "_", baseline, "_vs_", tp, ".pdf")))
+    hist(res_lfc$padj,
+         breaks = 50,
+         col    = "grey",
+         main   = paste("Distribution of Adjusted p-values (FDR):",
+                        species, tp),
+         xlab   = "FDR",
+         ylab   = "Frequency",
+         cex.main = 1.5,
+         cex.lab  = 1.2)
+    dev.off()
+
+    message("Finished DESeq for ", species, " ", baseline, " vs ", tp)
+  }
+}
+
+#------------------------------------------------------------------------
+#  loop over each species and run the function
+#------------------------------------------------------------------------
+
+# 1) Species: S. cerevisiae
+run_DESeq_timecourse(
+  counts_df  = Scer,
+  species    = "Scer",
+  results_dir= Scer_results,
+  plots_dir  = Scer_plots,
+  lfc_thr    = 1,
+  fdr_cutoff = 0.01,
+  use_abs    = TRUE
+)
+
+# 2) C. glabrata
+run_DESeq_timecourse(
+  counts_df  = Cgla,
+  species    = "Cgla",
+  results_dir= Cgla_results,
+  plots_dir  = Cgla_plots,
+  lfc_thr    = 1,
+  fdr_cutoff = 0.01,
+  use_abs    = TRUE
+)
+
+# 3) C. albicans
+run_DESeq_timecourse(
+  counts_df  = Calb,
+  species    = "Calb",
+  results_dir= Calb_results,
+  plots_dir  = Calb_plots,
+  lfc_thr    = 1,
+  fdr_cutoff = 0.01,
+  use_abs    = TRUE
+)
+
+# 4) K. lactis
+run_DESeq_timecourse(
+  counts_df  = Klac,
+  species    = "Klac",
+  results_dir= Klac_results,
+  plots_dir  = Klac_plots,
+  lfc_thr    = 1,
+  fdr_cutoff = 0.01,
+  use_abs    = FALSE
+)
+
 
 ```
 
@@ -2055,6 +2301,7 @@ Klac_mapped <- Klac_Degs %>%
 
 Klac_og <- Klac_mapped %>% dplyr::left_join(klac_map, by = "klac_gene_id")
 
+##############
 
 #############
 ## ---------- 1) Count DEGs by core class (keeps 'unmapped') ----------
@@ -2355,50 +2602,42 @@ write_csv(calb_missing_from_og, file.path(Calb_results, "20250911_Calb_missing_f
 
 
 ############ K. lactis 
-# read the GFF3
-klac_gff3 <- here("04.refs", "NRRLY1140_Kl_gca_000002515.ASM251v1.60.gff3")
-gff_kl <- data.table::fread(
-  klac_gff3,
-  sep="\t", header=FALSE, col.names=c("seqname","source","feature",
-  "start","end","score","strand","frame","attribute"),
-  quote="", data.table=FALSE
+
+# 1) Parse the GFF file (key=value attributes)
+klac_gff <- here("04.refs", "NRRL_Y1140_patched_fixed.gff")
+gff_kl <- fread(
+  klac_gff,
+  sep="\t", header=FALSE, data.table=FALSE,
+  col.names=c("seqname","source","feature","start","end","score","strand","frame","attribute")
 )
 
-# helper for key=value attributes
-get_attr_gff3 <- function(attr, key) {
-  m <- stringr::str_match(attr, paste0(key, "=([^;]+)"))
+# GFF helper: extract 'key=value' from the attribute column
+get_attr_gff <- function(attr, key) {
+  m <- str_match(attr, paste0(key, "=([^;]+)"))
   m[,2]
 }
 
-klac_gff3 <- here("04.refs", "NRRLY1140_Kl_gca_000002515.ASM251v1.60.gff3")
-gff_kl <- data.table::fread(
-  klac_gff3,
-  sep = "\t",
-  header = FALSE,
-  col.names = c("seqname","source","feature","start","end","score","strand","frame","attribute"),
-  quote = "",
-  data.table = FALSE
-)
-
+# 2) Build the gene list from rows where feature == "gene"
 klac_gene_list <- gff_kl %>%
-  dplyr::transmute(
-    feature,
-    # The locus tag is stored as gene_id or locus_tag in GFF3
-    gene_id  = dplyr::coalesce(
-      get_attr_gff3(attribute,"gene_id"),
-      get_attr_gff3(attribute,"locus_tag"),
-      get_attr_gff3(attribute,"ID"),
-      get_attr_gff3(attribute,"Name")
+  filter(feature == "gene") %>%
+  transmute(
+    # gene_id can appear as gene_id=KLLA0_A00110g or in ID=gene:KLLA0_A00110g
+    gene_id = coalesce(
+      get_attr_gff(attribute,"gene_id"),
+      sub("^gene:","", get_attr_gff(attribute,"ID"))
     ),
-    gene_name = dplyr::coalesce(
-      get_attr_gff3(attribute,"gene_name"),
-      get_attr_gff3(attribute,"Name")
+    gene_name = coalesce(
+      get_attr_gff(attribute,"gene_name"),
+      get_attr_gff(attribute,"description")
     )
   ) %>%
-  dplyr::filter(!is.na(gene_id)) %>%
-  dplyr::filter(feature == "gene") %>%
-  dplyr::mutate(gene_id = sub("^gene-", "", gene_id)) %>%
-  dplyr::distinct(gene_id, gene_name)
+  filter(!is.na(gene_id)) %>%
+  distinct(gene_id, gene_name) %>%
+  mutate(gene_id = sub("^gene-", "", gene_id)) 
+
+############ Map GTF KLLA0 gene IDs to xp id using your Klac_xpklla0tmapping table
+klac_gene_list_xp <- klac_gene_list %>%
+  left_join(Klac_xpklla0tmapping, by = c("gene_id" = "locus_tag"))
 
 # 2) Explode orthogroup Klac list (XP_) -> per-gene OG map
 klac_og_map <- orthogroups_cleaned %>%
@@ -2413,7 +2652,7 @@ klac_og_map <- orthogroups_cleaned %>%
   distinct()
 
 # 3) Coverage: join GTF genes to OG map via XP_
-klac_gene_og_status <- klac_gene_list %>%
+klac_gene_og_status <- klac_gene_list_xp %>%
   left_join(klac_og_map, by = "xp_id") %>%
   mutate(in_orthogroup = !is.na(OG))
 
@@ -2421,10 +2660,7 @@ klac_gene_og_status <- klac_gene_list %>%
 # (a) All genes missing from OG (includes non-protein-coding if they lack XP_)
 klac_missing_from_og <- klac_gene_og_status %>%
   filter(!in_orthogroup)
-
-# (b) Protein-coding only (must have XP_) and still missing from OG
-klac_missing_from_og_xpOnly <- klac_gene_og_status %>%
-  filter(!in_orthogroup, !is.na(xp_id))
+write_csv(klac_missing_from_og, file.path(Klac_results, "20250911_klac_missing_from_og.csv"))
 
 
 
@@ -2498,7 +2734,6 @@ By dividing each class’s DE rate by the overall DE rate, a fold_enrichment ≈
 
 
 ```{r doughty-fig3-d, warning=FALSE, message=FALSE}
-
 # S. cerevisiae — FULL DESeq results (not subsetted)
 scer_full <- read_csv(here("06.results", "Scer", "Scer_DE_topGo.csv"), 
                       show_col_types = FALSE) %>%
@@ -2768,6 +3003,168 @@ p_fig1c_all <- ggplot(fig1c_all, aes(x=status, y=fold_enrichment, fill=species))
   theme_minimal() + bold_theme
 
 p_fig1c_all
+```
+
+
+```{r rename-samples, warning=FALSE, message=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(stringr)
+  library(here)
+})
+
+# ---- Standardize sample names & write outputs --------------------------------
+# Rules:
+#  - within each species x timepoint: smallest b# -> b1, next smallest -> b2
+#  - L001/L002 -> .1/.2
+#  - keep non-count cols (e.g., gene_id, gene_name) untouched
+# Writes:
+#  - <out_dir>/<species>_renamed_counts.tsv
+#  - <out_dir>/<species>_column_mapping.csv
+#  - <out_dir>/<species>_collapse_groups.csv  (new_col -> sample_id for collapsing tech reps)
+standardize_sample_names <- function(counts_df,
+                                     species,
+                                     out_dir,
+                                     non_count_cols = c("gene_id","gene_name"),
+                                     strict = TRUE) {
+  stopifnot(is.data.frame(counts_df), is.character(species), length(species) == 1)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  old_cols <- colnames(counts_df)
+
+  # Only touch columns that match this species and the pattern Species.tXXXX.b#.L###
+  rx <- sprintf("^(%s)\\.(t\\d{4})\\.b(\\d+)\\.L(\\d+)$", species)
+  is_count_col <- grepl(rx, old_cols)
+
+  parse <- regexec(rx, old_cols)
+  m <- regmatches(old_cols, parse)
+
+  parsed_df <- do.call(rbind, lapply(seq_along(m), function(i) {
+    mm <- m[[i]]
+    if (length(mm) == 0) return(NULL)
+    data.frame(
+      old     = old_cols[i],
+      species = mm[2],
+      tp      = mm[3],
+      b_raw   = as.integer(mm[4]),
+      L_raw   = mm[5],
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  if (is.null(parsed_df) || nrow(parsed_df) == 0L) {
+    if (strict) warning(sprintf("[%s] No columns matched %s; returning input unchanged.", species, rx))
+    # Still write out a copy for traceability
+    out_counts <- file.path(out_dir, sprintf("%s_renamed_counts.tsv", species))
+    write_tsv(counts_df, out_counts)
+    return(invisible(list(df = counts_df,
+                          mapping = tibble(old = character(), new = character()),
+                          collapse_groups = tibble(new = character(), sample_id = character()))))
+  }
+
+  # Technical replicate index: last digit in L###
+  parsed_df$tech <- as.integer(sub(".*(\\d)$", "\\1", parsed_df$L_raw))
+  if (any(is.na(parsed_df$tech))) stop(sprintf("[%s] Could not parse technical replicate from L###.", species))
+
+  # Map b_raw -> b_new (1/2) within each (species,tp)
+  mapped <- parsed_df %>%
+    group_by(species, tp) %>%
+    mutate(
+      b_sorted = list(sort(unique(b_raw))),
+      n_b      = lengths(b_sorted),
+      b_rank   = match(b_raw, b_sorted[[1]]),
+      b_new    = case_when(
+        n_b == 1 ~ 1L,
+        n_b >= 2 ~ pmin(b_rank, 2L),
+        TRUE     ~ NA_integer_
+      )
+    ) %>%
+    ungroup()
+
+  # Friendly warning for groups with != 2 bio reps
+  weird <- mapped %>%
+    group_by(species, tp) %>%
+    summarise(n_b = n_distinct(b_raw), .groups = "drop") %>%
+    filter(n_b != 2L)
+  if (nrow(weird) > 0 && strict) {
+    msg <- paste(apply(weird, 1, function(r)
+      sprintf("%s %s has %s biological replicate(s)", r[["species"]], r[["tp"]], r[["n_b"]])),
+      collapse = "; ")
+    warning(sprintf("[%s] %s. Mapping smallest->b1 and next->b2.", species, msg))
+  }
+
+  # Compose new standardized names
+  mapped$new <- sprintf("%s.%s.b%d.%d", mapped$species, mapped$tp, mapped$b_new, mapped$tech)
+
+  # Collision check
+  dup_new <- mapped %>% count(new) %>% filter(n > 1)
+  if (nrow(dup_new) > 0L) stop(sprintf("[%s] Name collision after mapping: %s",
+                                       species, paste(dup_new$new, collapse = ", ")))
+
+  # Build rename vector
+  rename_vec <- setNames(mapped$new, mapped$old)
+
+  # Apply to the data frame
+  new_cols <- old_cols
+  idx <- match(names(rename_vec), new_cols, nomatch = 0)
+  new_cols[idx] <- rename_vec[names(rename_vec)[idx > 0]]
+  colnames(counts_df) <- new_cols
+
+  # Build a collapse_groups table: new_col -> sample_id (drop .tech)
+  collapse_groups <- mapped %>%
+    transmute(new, sample_id = sub("\\.[12]$", "", new)) %>%
+    distinct()
+
+  # Write outputs
+  out_counts <- file.path(out_dir, sprintf("%s_renamed_counts.tsv", species))
+  out_map    <- file.path(out_dir, sprintf("%s_column_mapping.csv", species))
+  out_cg     <- file.path(out_dir, sprintf("%s_collapse_groups.csv", species))
+
+  write_tsv(counts_df, out_counts)
+  write_csv(mapped %>% select(old, new, species, tp, b_raw, b_new, tech), out_map)
+  write_csv(collapse_groups, out_cg)
+
+  invisible(list(df = counts_df,
+                 mapping = mapped %>% select(old, new, species, tp, b_raw, b_new, tech),
+                 collapse_groups = collapse_groups))
+}
+
+# ---- Calls for the four species ------------------------------------------------
+# Reads you provided:
+# Scer <- read_tsv(here("05.metadata","Scer","salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+# Cgla <- read_tsv(here("05.metadata","Cgla","salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+# Calb <- read_tsv(here("05.metadata","Calb","salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+# Klac <- read_tsv(here("05.metadata","Klac","salmon.merged.gene_counts.tsv"), show_col_types = FALSE)
+
+# Output dirs you defined:
+# Scer_results <- here("06.results","Scer")
+# Cgla_results <- here("06.results","Cgla")
+# Calb_results <- here("06.results","Calb")
+# Klac_results <- here("06.results","Klac")
+# combined     <- here("06.results","combined")
+
+# Run renaming + writes per species
+Scer_std <- standardize_sample_names(Scer, species = "Scer", out_dir = Scer_results)
+Cgla_std <- standardize_sample_names(Cgla, species = "Cgla", out_dir = Cgla_results)
+Calb_std <- standardize_sample_names(Calb, species = "Calb", out_dir = Calb_results)
+Klac_std <- standardize_sample_names(Klac, species = "Klac", out_dir = Klac_results)
+
+# Optional: write a combined mapping log across species
+dir.create(combined, recursive = TRUE, showWarnings = FALSE)
+bind_rows(
+  mutate(Scer_std$mapping, organism = "Scer"),
+  mutate(Cgla_std$mapping, organism = "Cgla"),
+  mutate(Calb_std$mapping, organism = "Calb"),
+  mutate(Klac_std$mapping, organism = "Klac")
+) %>%
+  select(organism, tp, old, new, b_raw, b_new, tech) %>%
+  arrange(organism, tp, new) %>%
+  write_csv(file.path(combined, "all_species_column_mapping.csv"))
+
+# Tip for DESeq collapsing later:
+# readr::read_csv(file.path(Scer_results, "Scer_collapse_groups.csv")) gives you new_col -> sample_id.
+# Use sample_id as the 'groupby' argument to collapse technical replicates after subsetting a contrast.
 
 ```
 
