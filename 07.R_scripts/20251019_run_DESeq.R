@@ -34,15 +34,27 @@ run_all_timecourses <- function(
     use_abs        = TRUE,
     date_tag       = format(Sys.Date(), "%Y%m%d")
 ) {
-  ## ---- fail fast if missing ----
-  req <- c("DESeq2","apeglm","ggplot2","dplyr","readr","stringr","tibble")
-  miss <- req[!vapply(req, requireNamespace, FUN.VALUE = logical(1), quietly = TRUE)]
-  if (length(miss)) stop("Missing packages: ", paste(miss, collapse=", "),
-                         "\nPlease install before running.")
-  suppressPackageStartupMessages({
-    library(DESeq2); library(apeglm); library(ggplot2)
-    library(dplyr);  library(readr);  library(stringr); library(tibble)
-  })
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+      install.packages("BiocManager")
+    }
+    req <- c("DESeq2","apeglm","ggplot2","dplyr","readr","stringr","tibble","here")
+    
+    miss <- req[!vapply(req, requireNamespace, FUN.VALUE = logical(1), quietly = TRUE)]
+    if (length(miss)) {
+      message("Installing missing packages via BiocManager: ", paste(miss, collapse = ", "))
+      BiocManager::install(miss, ask = FALSE, update = FALSE)
+    }
+    still_miss <- req[!vapply(req, requireNamespace, FUN.VALUE = logical(1), quietly = TRUE)]
+    if (length(still_miss)) {
+      stop("These packages could not be installed/loaded: ",
+           paste(still_miss, collapse = ", "),
+           "\nPlease check your R setup and try again.")
+    }
+    
+    suppressPackageStartupMessages({
+      library(DESeq2);library(apeglm); library(ggplot2); library(readr); library(dplyr); library(tidyr)
+      library(stringr); library(tibble); library(here)
+    })
   
   ## ---- ----
   fmt_thr <- function(x) gsub("\\D", "", sprintf("%.3f", x))  # 0.01 -> "001"
