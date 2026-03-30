@@ -1,0 +1,26 @@
+scer_gene_name,functional_category,category_order,gene_id
+ENA1,Transporters,1,NA
+ENA2,Transporters,1,GWK60_K11803
+GIT1,Transporters,1,GWK60_A01155
+PHO84,Transporters,1,GWK60_B02321
+PHO89,Transporters,1,NA
+VTC1,Poly P Metabolism,2,GWK60_M12617
+VTC2,Poly P Metabolism,2,GWK60_F01903
+VTC3,Poly P Metabolism,2,NA
+VTC4,Poly P Metabolism,2,GWK60_G06677
+PHO81,Regulatory,3,GWK60_L08591
+PHO86,Regulatory,3,GWK60_L09779
+SPL2,Regulatory,3,NA
+VIP1,Regulatory,3,NA
+DDP1,Phosphatases,4,GWK60_L10791
+GDE1,Phosphatases,4,GWK60_J06875
+HOR2,Phosphatases,4,GWK60_I01309
+PHM8,Phosphatases,4,GWK60_C01925
+PHO11,Phosphatases,4,NA
+PHO12,Phosphatases,4,NA
+PHO5,Phosphatases,4,NA
+PHO8,Phosphatases,4,GWK60_H07337
+CBF1,Other,5,GWK60_H01617
+CTF19,Other,5,GWK60_F01793
+PHM6,Other,5,NA
+SDT1,Other,5,NA

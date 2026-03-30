@@ -1,0 +1,26 @@
+scer_gene_name,functional_category,category_order,gene_id
+ENA1,Transporters,1,NA
+ENA2,Transporters,1,orf19.5170
+GIT1,Transporters,1,orf19.1978
+PHO84,Transporters,1,orf19.655
+PHO89,Transporters,1,orf19.4599
+VTC1,Poly P Metabolism,2,orf19.5455
+VTC2,Poly P Metabolism,2,orf19.4381
+VTC3,Poly P Metabolism,2,NA
+VTC4,Poly P Metabolism,2,orf19.3363
+PHO81,Regulatory,3,orf19.7475
+PHO86,Regulatory,3,orf19.2199
+SPL2,Regulatory,3,NA
+VIP1,Regulatory,3,NA
+DDP1,Phosphatases,4,orf19.4229
+GDE1,Phosphatases,4,orf19.3936
+HOR2,Phosphatases,4,orf19.5437
+PHM8,Phosphatases,4,orf19.3922
+PHO11,Phosphatases,4,orf19.2619
+PHO12,Phosphatases,4,NA
+PHO5,Phosphatases,4,NA
+PHO8,Phosphatases,4,orf19.4736
+CBF1,Other,5,orf19.2876
+CTF19,Other,5,NA
+PHM6,Other,5,NA
+SDT1,Other,5,NA

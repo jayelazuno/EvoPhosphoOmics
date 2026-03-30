@@ -1,0 +1,67 @@
+"gsm","title","genotype_ch1","pi_ch1","genotype_ch2","pi_ch2","replicate","comparison_class","delta_sign","genotype"
+"GSM578408","Mutant Cycle Replicate 1 Comparison 1","Wild type","No_Pi","Wild type","High_Pi","R1","Pi_starvation",1,"Wild type"
+"GSM578409","Mutant Cycle Replicate 1 Comparison 2","Wild type","High_Pi","pho2Δ","High_Pi","R1","Genotype",NA,NA
+"GSM578410","Mutant Cycle Replicate 1 Comparison 3","Wild type","No_Pi","pho2Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578411","Mutant Cycle Replicate 1 Comparison 4","Wild type","High_Pi","pho4Δ","High_Pi","R1","Genotype",NA,NA
+"GSM578412","Mutant Cycle Replicate 1 Comparison 5","Wild type","No_Pi","pho4Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578413","Mutant Cycle Replicate 1 Comparison 6","Wild type","High_Pi","pho2Δ pho4Δ","High_Pi","R1","Genotype",NA,NA
+"GSM578414","Mutant Cycle Replicate 1 Comparison 7","Wild type","No_Pi","pho2Δ pho4Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578415","Mutant Cycle Replicate 1 Comparison 8","Wild type","No_Pi","Wild type","High_Pi","R1","Pi_starvation",1,"Wild type"
+"GSM578416","Mutant Cycle Replicate 1 Comparison 9","pho2Δ","No_Pi","pho2Δ","High_Pi","R1","Pi_starvation",1,"pho2Δ"
+"GSM578417","Mutant Cycle Replicate 1 Comparison 10","pho2Δ","High_Pi","pho2Δ pho4Δ","High_Pi","R1","Genotype",NA,NA
+"GSM578418","Mutant Cycle Replicate 1 Comparison 11","pho2Δ","No_Pi","pho2Δ pho4Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578419","Mutant Cycle Replicate 1 Comparison 12","pho4Δ","No_Pi","pho4Δ","High_Pi","R1","Pi_starvation",1,"pho4Δ"
+"GSM578420","Mutant Cycle Replicate 1 Comparison 13","pho4Δ","High_Pi","pho2Δ pho4Δ","High_Pi","R1","Genotype",NA,NA
+"GSM578421","Mutant Cycle Replicate 1 Comparison 14","pho4Δ","No_Pi","pho2Δ pho4Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578422","Mutant Cycle Replicate 1 Comparison 15","pho2Δ pho4Δ","No_Pi","pho2Δ pho4Δ","High_Pi","R1","Pi_starvation",1,"pho2Δ pho4Δ"
+"GSM578423","Mutant Cycle Replicate 1 Comparison 16","Wild type","No_Pi","pho2Δ pho4Δ","No_Pi","R1","Genotype",NA,NA
+"GSM578424","Mutant Cycle Replicate 2 Comparison 1","Wild type","No_Pi","Wild type","High_Pi","R2","Pi_starvation",1,"Wild type"
+"GSM578425","Mutant Cycle Replicate 2 Comparison 2","Wild type","High_Pi","pho2Δ","High_Pi","R2","Genotype",NA,NA
+"GSM578426","Mutant Cycle Replicate 2 Comparison 3","Wild type","No_Pi","pho2Δ","No_Pi","R2","Genotype",NA,NA
+"GSM578427","Mutant Cycle Replicate 2 Comparison 4","Wild type","High_Pi","pho4Δ","High_Pi","R2","Genotype",NA,NA
+"GSM578428","Mutant Cycle Replicate 2 Comparison 5","Wild type","No_Pi","pho4Δ","No_Pi","R2","Genotype",NA,NA
+"GSM578429","Mutant Cycle Replicate 2 Comparison 6","Wild type","High_Pi","pho2Δ pho4Δ","High_Pi","R2","Genotype",NA,NA
+"GSM578430","Mutant Cycle Replicate 2 Comparison 7","Wild type","No_Pi","pho2Δ pho4Δ","No_Pi","R2","Genotype",NA,NA
+"GSM578431","Mutant Cycle Replicate 2 Comparison 8","pho2Δ","No_Pi","pho2Δ","High_Pi","R2","Pi_starvation",1,"pho2Δ"
+"GSM578432","Mutant Cycle Replicate 2 Comparison 9","pho2Δ","No_Pi","pho2Δ","High_Pi","R2","Pi_starvation",1,"pho2Δ"
+"GSM578433","Mutant Cycle Replicate 2 Comparison 10","pho2Δ","High_Pi","pho2Δ pho4Δ","High_Pi","R2","Genotype",NA,NA
+"GSM578434","Mutant Cycle Replicate 2 Comparison 11","pho2Δ","No_Pi","pho2Δ pho4Δ","No_Pi","R2","Genotype",NA,NA
+"GSM578435","Mutant Cycle Replicate 2 Comparison 12","pho4Δ","No_Pi","pho4Δ","High_Pi","R2","Pi_starvation",1,"pho4Δ"
+"GSM578436","Mutant Cycle Replicate 2 Comparison 13","pho4Δ","High_Pi","pho2Δ pho4Δ","High_Pi","R2","Genotype",NA,NA
+"GSM578437","Mutant Cycle Replicate 2 Comparison 14","pho4Δ","No_Pi","pho2Δ pho4Δ","No_Pi","R2","Genotype",NA,NA
+"GSM578438","Mutant Cycle Replicate 2 Comparison 15","pho2Δ pho4Δ","No_Pi","pho2Δ pho4Δ","High_Pi","R2","Pi_starvation",1,"pho2Δ pho4Δ"
+"GSM578439","Mutant Cycle Replicate 2 Comparison 16","pho4Δ","No_Pi","pho4Δ","High_Pi","R2","Pi_starvation",1,"pho4Δ"
+"GSM578440","Mutant Cycle Replicate 3 Comparison 1","Wild type","No_Pi","Wild type","High_Pi","R3","Pi_starvation",1,"Wild type"
+"GSM578441","Mutant Cycle Replicate 3 Comparison 2","pho2Δ","High_Pi","Wild type","High_Pi","R3","Genotype",NA,NA
+"GSM578442","Mutant Cycle Replicate 3 Comparison 3","pho2Δ","No_Pi","Wild type","No_Pi","R3","Genotype",NA,NA
+"GSM578443","Mutant Cycle Replicate 3 Comparison 4","pho4Δ","High_Pi","Wild type","High_Pi","R3","Genotype",NA,NA
+"GSM578444","Mutant Cycle Replicate 3 Comparison 5","pho4Δ","No_Pi","Wild type","No_Pi","R3","Genotype",NA,NA
+"GSM578445","Mutant Cycle Replicate 3 Comparison 6","pho2Δ pho4Δ","High_Pi","Wild type","High_Pi","R3","Genotype",NA,NA
+"GSM578446","Mutant Cycle Replicate 3 Comparison 7","pho2Δ pho4Δ","No_Pi","Wild type","No_Pi","R3","Genotype",NA,NA
+"GSM578447","Mutant Cycle Replicate 3 Comparison 8","pho2Δ","No_Pi","pho2Δ","High_Pi","R3","Pi_starvation",1,"pho2Δ"
+"GSM578448","Mutant Cycle Replicate 3 Comparison 9","pho2Δ","No_Pi","pho2Δ","High_Pi","R3","Pi_starvation",1,"pho2Δ"
+"GSM578449","Mutant Cycle Replicate 3 Comparison 10","pho2Δ pho4Δ","High_Pi","pho2Δ","High_Pi","R3","Genotype",NA,NA
+"GSM578450","Mutant Cycle Replicate 3 Comparison 11","pho2Δ pho4Δ","No_Pi","pho2Δ","No_Pi","R3","Genotype",NA,NA
+"GSM578451","Mutant Cycle Replicate 3 Comparison 12","pho4Δ","No_Pi","pho4Δ","High_Pi","R3","Pi_starvation",1,"pho4Δ"
+"GSM578452","Mutant Cycle Replicate 3 Comparison 13","pho2Δ pho4Δ","High_Pi","pho4Δ","High_Pi","R3","Genotype",NA,NA
+"GSM578453","Mutant Cycle Replicate 3 Comparison 14","pho2Δ pho4Δ","No_Pi","pho4Δ","No_Pi","R3","Genotype",NA,NA
+"GSM578454","Mutant Cycle Replicate 3 Comparison 15","pho2Δ pho4Δ","No_Pi","pho2Δ pho4Δ","High_Pi","R3","Pi_starvation",1,"pho2Δ pho4Δ"
+"GSM578455","Mutant Cycle Replicate 3 Comparison 16","pho4Δ","No_Pi","pho4Δ","High_Pi","R3","Pi_starvation",1,"pho4Δ"
+"GSM578456","Wild type no vs high Pi conditions Replicate 1","Wild type","High_Pi","Wild type","No_Pi","R1","Pi_starvation",-1,"Wild type"
+"GSM578457","Wild type no vs high Pi conditions Replicate 2","Wild type","High_Pi","Wild type","No_Pi","R2","Pi_starvation",-1,"Wild type"
+"GSM578458","Wild type no vs high Pi conditions Replicate 3","Wild type","High_Pi","Wild type","No_Pi","R3","Pi_starvation",-1,"Wild type"
+"GSM578459","Wild type no vs high Pi conditions Replicate 4","Wild type","High_Pi","Wild type","No_Pi","R4","Pi_starvation",-1,"Wild type"
+"GSM578460","cbf1Δ vs wild type in high Pi conditions replicate 1","Wild type","High_Pi","cbf1Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578461","cbf1Δ vs wild type in high Pi conditions replicate 2","Wild type","High_Pi","cbf1Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578462","cbf1Δ vs wild type in high Pi conditions replicate 3","Wild type","High_Pi","cbf1Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578463","cbf1Δ vs wild type in high Pi conditions replicate 4","Wild type","High_Pi","cbf1Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578464","cbf1Δpho4Δ vs wild type in high Pi conditions replicate 1","Wild type","High_Pi","cbf1Δpho4Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578465","cbf1Δpho4Δ vs wild type in high Pi conditions replicate 2","Wild type","High_Pi","cbf1Δpho4Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578466","cbf1Δpho4Δ vs wild type in high Pi conditions replicate 3","Wild type","High_Pi","cbf1Δpho4Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578467","cbf1Δpho4Δ vs wild type in high Pi conditions replicate 4","Wild type","High_Pi","cbf1Δpho4Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578468","rtg3Δtye7Δ vs wild type in high Pi conditions replicate 1","Wild type","High_Pi","rtg3Δtye7Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578469","rtg3Δtye7Δ vs wild type in high Pi conditions replicate 2","Wild type","High_Pi","rtg3Δtye7Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578470","pho80Δ vs pho80Δpho4Δ in high Pi conditions replicate 1","pho80Δpho4Δ","High_Pi","pho80Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578471","pho80Δ vs pho80Δpho4Δ in high Pi conditions replicate 2","pho80Δpho4Δ","High_Pi","pho80Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578472","pho80Δcbf1Δ vs pho80Δpho4Δcbf1Δ in high Pi conditions replicate 1","pho80Δcbf1Δpho4Δ","High_Pi","pho80Δcbf1Δ","High_Pi","RNA","Genotype",NA,NA
+"GSM578473","pho80Δcbf1Δ vs pho80Δpho4Δcbf1Δ in high Pi conditions replicate 2","pho80Δcbf1Δpho4Δ","High_Pi","pho80Δcbf1Δ","High_Pi","RNA","Genotype",NA,NA

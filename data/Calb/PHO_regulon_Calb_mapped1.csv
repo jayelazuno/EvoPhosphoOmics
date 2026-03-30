@@ -1,0 +1,26 @@
+gene_id,original_id,scer_gene_name,functional_category,category_order
+NA,NA,ENA1,Transporters,1
+orf19.5170,orf19.5170,ENA2,Transporters,1
+orf19.34,orf19.34,GIT1,Transporters,1
+orf19.655,orf19.655,PHO84,Transporters,1
+orf19.4599,orf19.4599,PHO89,Transporters,1
+orf19.5455,orf19.5455,VTC1,Poly P Metabolism,2
+orf19.4381,orf19.4381,VTC2,Poly P Metabolism,2
+NA,NA,VTC3,Poly P Metabolism,2
+orf19.3363,orf19.3363,VTC4,Poly P Metabolism,2
+orf19.7475,orf19.7475,PHO81,Regulatory,3
+orf19.2199,orf19.2199,PHO86,Regulatory,3
+NA,NA,SPL2,Regulatory,3
+orf19.980,orf19.980,VIP1,Regulatory,3
+orf19.4229,orf19.4229,DDP1,Phosphatases,4
+orf19.3936,orf19.3936,GDE1,Phosphatases,4
+orf19.5437,orf19.5437,HOR2,Phosphatases,4
+orf19.3922,orf19.3922,PHM8,Phosphatases,4
+orf19.3727,orf19.3727,PHO11,Phosphatases,4
+NA,NA,PHO12,Phosphatases,4
+NA,NA,PHO5,Phosphatases,4
+orf19.4736,orf19.4736,PHO8,Phosphatases,4
+orf19.2876,orf19.2876,CBF1,Other,5
+NA,NA,CTF19,Other,5
+NA,NA,PHM6,Other,5
+NA,NA,SDT1,Other,5

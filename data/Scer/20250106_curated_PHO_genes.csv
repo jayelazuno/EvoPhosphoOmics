@@ -1,0 +1,26 @@
+gene_id,gene_name,n_papers,support_score,supporting_papers
+YAR071W,PHO11,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YHR215W,PHO12,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YBR093C,PHO5,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YDR481C,PHO8,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YGR233C,PHO81,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YML123C,PHO84,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YJL117W,PHO86,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YBR296C,PHO89,5,4,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YPL018W,CTF19,4,3,He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003; Ogawa_et_al_2000
+YDR281C,PHM6,4,3,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003
+YER037W,PHM8,4,3,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003
+YHR136C,SPL2,4,3,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011; Ogawa_et_al_2000
+YOR163W,DDP1,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YCR098C,GIT1,3,2,He_et_al_2017; Zhou_OShea_2011; Springer_et_al_2003
+YLR410W,VIP1,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YER072W,VTC1,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YFL004W,VTC2,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YPL019C,VTC3,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YJL012C,VTC4,3,2,Gurvich_et_al_2017; He_et_al_2017; Zhou_OShea_2011
+YGL224C,SDT1,2,2,Gurvich_et_al_2017; Springer_et_al_2003
+YPL110C,GDE1,2,1.5,Gurvich_et_al_2017; He_et_al_2017
+YJR060W,CBF1,2,1,He_et_al_2017; Zhou_OShea_2011
+YDR040C,ENA1,2,1,He_et_al_2017; Zhou_OShea_2011
+YDR039C,ENA2,2,1,He_et_al_2017; Zhou_OShea_2011
+YER062C,HOR2,2,1,He_et_al_2017; Zhou_OShea_2011

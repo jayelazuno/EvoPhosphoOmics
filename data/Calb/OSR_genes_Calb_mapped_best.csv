@@ -1,0 +1,56 @@
+Orthogroup,gene_id,original_id,cagl_id,scer_gene_name,functional_category,category_order
+OG0000517,orf19.238,orf19.238,NA,CCP1,Antioxidant,1
+OG0000242,orf19.6229,orf19.6229,NA,CTT1,Antioxidant,1
+OG0001098,orf19.2770.1,orf19.2770.1,NA,SOD1,Antioxidant,1
+OG0000815,orf19.7111.1,orf19.3340,NA,SOD2,Antioxidant,1
+OG0000585,orf19.4290,orf19.4290,NA,TRR1,Antioxidant,1
+OG0000173,orf19.7611,orf19.7611,NA,TRX2,Antioxidant,1
+NA,NA,NA,NA,TSA1,Antioxidant,1
+OG0000176,orf19.2762,orf19.2762,NA,ahp1,Antioxidant,1
+OG0001432,orf19.6402,orf19.6402,NA,cys3,Antioxidant,1
+OG0001009,orf19.4147,orf19.4147,NA,glr1,Antioxidant,1
+OG0000007,orf19.5611,orf19.2581,NA,gre2,Antioxidant,1
+OG0000532,orf19.6059,orf19.6059,NA,grx1,Antioxidant,1
+OG0003440,orf19.5059,orf19.5059,NA,gsh1,Antioxidant,1
+OG0000837,orf19.5112,orf19.5112,NA,tkl2,Antioxidant,1
+OG0000384,orf19.7417,orf19.7398.1,NA,tsa2,Antioxidant,1
+OG0002808,orf19.6387,orf19.6387,NA,hsp104,Chaperon,2
+OG0000379,orf19.3548.1,orf19.3160,NA,hsp12,Chaperon,2
+OG0004261,NA,NA,NA,hsp42,Chaperon,2
+OG0003436,orf19.717,orf19.717,NA,hsp60,Chaperon,2
+OG0003249,orf19.882,orf19.882,NA,hsp78,Chaperon,2
+OG0000887,orf19.6515,orf19.6515,NA,hsp82,Chaperon,2
+OG0002474,orf19.5749,orf19.5749,NA,sba1,Chaperon,2
+OG0000018,orf19.1065,orf19.1065,NA,ssa1,Chaperon,2
+OG0000219,orf19.772,orf19.4506,NA,lys20,Amino Acid Metabolism,3
+OG0000015,orf19.5806,orf19.5806,NA,ald5,Carbon Metabolism,4
+OG0004041,orf19.2172,orf19.2172,NA,ara1,Carbon Metabolism,4
+OG0002061,orf19.4060,orf19.4060,NA,aro4,Carbon Metabolism,4
+OG0000695,orf19.4777,orf19.4777,NA,dak1,Carbon Metabolism,4
+OG0000539,orf19.6116,orf19.6116,NA,glk1,Carbon Metabolism,4
+OG0000284,orf19.5437,orf19.5437,NA,gpp2,Carbon Metabolism,4
+OG0000514,orf19.2841,orf19.2841,NA,pgm2,Carbon Metabolism,4
+OG0000547,orf19.4371,orf19.4371,NA,tal1,Carbon Metabolism,4
+OG0001869,orf19.6640,orf19.6640,NA,tps1,Carbon Metabolism,4
+OG0002245,orf19.1738,orf19.1738,NA,ugp1,Carbon Metabolism,4
+OG0001558,orf19.4754,orf19.4754,NA,zwf1,Carbon Metabolism,4
+OG0000928,orf19.1891,orf19.1891,NA,pep4,Protein Degradation,5
+OG0002313,orf19.7178,orf19.7178,NA,pre5,Protein Degradation,5
+OG0001775,orf19.709,orf19.709,NA,pup2,Protein Degradation,5
+OG0001702,orf19.7264,orf19.7264,NA,rpn11,Protein Degradation,5
+OG0001911,orf19.441,orf19.441,NA,rpt1,Protein Degradation,5
+OG0000883,orf19.1974,orf19.1974,NA,tfs1,Protein Degradation,5
+OG0003350,orf19.7438,orf19.7438,NA,uba1,Protein Degradation,5
+OG0000123,orf19.2340,orf19.2340,NA,cdc48,Not Classified,6
+OG0003419,orf19.3221,orf19.3221,NA,cpa2,Not Classified,6
+NA,NA,NA,NA,lsp1,Not Classified,6
+OG0000014,orf19.125,orf19.125,NA,oye3,Not Classified,6
+OG0000372,orf19.5130,orf19.5130,NA,pdi1,Not Classified,6
+OG0000124,orf19.3149,orf19.3149,NA,pil1,Not Classified,6
+OG0001800,orf19.6684,orf19.6684,NA,pnc1,Not Classified,6
+OG0000253,orf19.5517,orf19.5517,NA,adh6,Unknown Function,7
+OG0003394,orf19.6987,orf19.6987,NA,dnm1,Unknown Function,7
+OG0000499,orf19.225,orf19.2176,NA,gor1,Unknown Function,7
+OG0000191,orf19.2128,orf19.2128,NA,ola1,Unknown Function,7
+OG0000027,orf19.2241,orf19.2241,NA,pst2,Unknown Function,7
+OG0000127,orf19.2396,orf19.1763,NA,ynl134c,Unknown Function,7

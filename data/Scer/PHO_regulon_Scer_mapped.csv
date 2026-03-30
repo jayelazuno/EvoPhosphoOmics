@@ -1,0 +1,26 @@
+gene_id,scer_gene_name,functional_category,category_order
+YDR040C,ENA1,Transporters,1
+YDR039C,ENA2,Transporters,1
+YCR098C,GIT1,Transporters,1
+YML123C,PHO84,Transporters,1
+YBR296C,PHO89,Transporters,1
+YER072W,VTC1,Poly P Metabolism,2
+YFL004W,VTC2,Poly P Metabolism,2
+YPL019C,VTC3,Poly P Metabolism,2
+YJL012C,VTC4,Poly P Metabolism,2
+YGR233C,PHO81,Regulatory,3
+YJL117W,PHO86,Regulatory,3
+YHR136C,SPL2,Regulatory,3
+YLR410W,VIP1,Regulatory,3
+YOR163W,DDP1,Phosphatases,4
+YPL110C,GDE1,Phosphatases,4
+YER062C,HOR2,Phosphatases,4
+YER037W,PHM8,Phosphatases,4
+YAR071W,PHO11,Phosphatases,4
+YHR215W,PHO12,Phosphatases,4
+YBR093C,PHO5,Phosphatases,4
+YDR481C,PHO8,Phosphatases,4
+YJR060W,CBF1,Other,5
+YPL018W,CTF19,Other,5
+YDR281C,PHM6,Other,5
+YGL224C,SDT1,Other,5
